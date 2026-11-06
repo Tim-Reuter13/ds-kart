@@ -52,7 +52,8 @@ export const AudioStore = {
     if (m.active === name) m.active = m.profiles[0];
     saveMeta(m); return true;
   },
-  async save(profile, id, blob) { await tx("readwrite", s => s.put({ blob, at: Date.now() }, profile + "|" + id)); },
+  async save(profile, id, blob, at) { await tx("readwrite", s => s.put({ blob, at: at || Date.now() }, profile + "|" + id)); },
+  addProfiles(names) { const m = meta(); let ch = false; for (const n of names) if (n && !m.profiles.includes(n)) { m.profiles.push(n); ch = true; } if (ch) saveMeta(m); },
   async remove(profile, id) { await tx("readwrite", s => s.delete(profile + "|" + id)); },
   // Map id -> {blob, at}
   async load(profile) {

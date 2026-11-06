@@ -2,6 +2,7 @@
 import { DRIVERS } from "./cars.js";
 
 export const SFX = [
+  ["letsgo", "Ansage „Let's go!“ (Sonja)", "Kommt beim Start jedes Rennens zusammen mit dem Startsignal – Sonja spricht das ein!"],
   ["beep", "Countdown-Piep", "Die drei Pieptöne vor dem Start (3 … 2 … 1)."],
   ["go", "Startsignal", "Wenn das Rennen losgeht – „LOS!“"],
   ["box", "Item-Kiste", "Beim Durchfahren einer Item-Kiste."],
@@ -34,6 +35,11 @@ export const VOICE_LINES = [
   ["item", "Item-Ruf", "Beim Benutzen eines Items, z. B. „Nimm das!“", 3],
   ["win", "Sieg", "Bei Platz 1–3 im Ziel, z. B. „Ezzz!“", 5],
   ["lose", "Niederlage", "Bei Platz 4–8 im Ziel, z. B. „Unfair!“", 5],
+  ["boost", "Boost-Jubel", "Bei Energy, Kurzen oder Drift-Boost, z. B. „Wuhuu!“", 3],
+  ["drift", "Drift-Ruf", "Wenn der Drift voll glüht (rote Flammen), z. B. „Driiift!“", 3],
+  ["gotitem", "Item bekommen", "Wenn die Item-Lotterie stoppt, z. B. „Ohh nice!“", 3],
+  ["flash", "Geblitzt", "Wenn der Blitzer dich erwischt, z. B. „Neeein, Punkte!“", 3],
+  ["splash", "Ins Wasser", "Beim Reinfallen in den Baggersee, z. B. „Kalt!“", 3],
   ["engine", "Motor", "Motorgeräusch – wird je nach Tempo höher/tiefer gespielt. 2–3 Sek. gleichmäßig brummen.", 4],
 ];
 

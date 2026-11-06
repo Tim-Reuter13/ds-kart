@@ -1,6 +1,7 @@
 // Menue "Audio-Profil": alle Sounds anhoeren, selbst aufnehmen (PC- oder Handy-Mikro), speichern
 import { AudioStore } from "./audiostore.js";
 import { catalog } from "./sounds.js";
+import { Cloud } from "./cloud.js";
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -10,11 +11,49 @@ export function initAudioUI({ audio, net, show }) {
   let cat = "sfx", clips = new Map(), back = "lobby";
   let rec = null; // laufende Aufnahme {item, source, ...}
 
+  let cloudMsg = "";
   async function loadActive() {
+    try {
+      AudioStore.addProfiles(await Cloud.profilesInCloud());
+      const n = await Cloud.pull(AudioStore, AudioStore.active());
+      cloudMsg = n ? `☁ ${n} Aufnahme(n) aus der Cloud geladen` : "☁ aktuell";
+    } catch (e) { cloudMsg = "☁ offline"; }
     clips = await AudioStore.load(AudioStore.active());
     await audio.loadProfile(clips);
+    renderCloud();
   }
   loadActive().catch(e => console.warn("Audio-Profil laden", e));
+
+  // Cloud-Zeile (GitHub)
+  const cl = document.createElement("div");
+  cl.className = "abar"; cl.id = "aCloud";
+  cl.innerHTML = `<span id="cStat" class="small"></span><button class="btn sm" id="cTok">🔑 GitHub-Token</button><button class="btn sm" id="cPush">☁ Jetzt hochladen</button>`;
+  document.querySelector("#aTabs").before(cl);
+  function renderCloud() {
+    const has = !!Cloud.token();
+    const s = document.querySelector("#cStat"); if (!s) return;
+    s.textContent = (has ? "Cloud: an – neue Aufnahmen werden automatisch hochgeladen. " : "Cloud: nur lesen (kein Token) – Aufnahmen bleiben auf diesem PC. ") + cloudMsg;
+    document.querySelector("#cPush").style.display = has ? "" : "none";
+  }
+  let syncT = null;
+  function scheduleSync() {
+    if (!Cloud.token()) return;
+    clearTimeout(syncT);
+    cloudMsg = "☁ lade gleich hoch …"; renderCloud();
+    syncT = setTimeout(syncNow, 3000);
+  }
+  async function syncNow() {
+    cloudMsg = "☁ lade hoch …"; renderCloud();
+    try { const n = await Cloud.push(AudioStore, AudioStore.active()); cloudMsg = `☁ hochgeladen (${n} Datei(en)) – in ca. 1 Minute auf allen Geräten`; }
+    catch (e) { cloudMsg = "☁ Fehler: " + e.message; }
+    renderCloud();
+  }
+  document.querySelector("#cPush").onclick = syncNow;
+  document.querySelector("#cTok").onclick = () => {
+    const t = prompt("GitHub-Token einfügen (Fine-grained, nur Repo ds-kart, Contents: Read and write).\nLeer lassen = Token entfernen.", Cloud.token() ? "••••••••" : "");
+    if (t === null || t === "••••••••") return;
+    Cloud.setToken(t); renderCloud(); if (t) syncNow();
+  };
 
   function renderBar() {
     $("#aProfile").innerHTML = AudioStore.profiles().map(p => `<option ${p === AudioStore.active() ? "selected" : ""}>${esc(p)}</option>`).join("");
@@ -40,14 +79,14 @@ export function initAudioUI({ audio, net, show }) {
     }
     $("#alist").innerHTML = html;
   }
-  function open(from) { back = from || "lobby"; audio.ensure(); renderBar(); renderList(); show("audio"); }
+  function open(from) { back = from || "lobby"; audio.ensure(); renderBar(); renderList(); renderCloud(); show("audio"); }
 
   $("#aTabs").addEventListener("click", e => { const b = e.target.closest("[data-c]"); if (b) { cat = b.dataset.c; renderList(); } });
   $("#alist").addEventListener("click", async e => {
     const b = e.target.closest("[data-a]"); if (!b) return;
     const it = items.find(i => i.id === b.closest("[data-id]").dataset.id);
     if (b.dataset.a === "play") audio.preview(it);
-    if (b.dataset.a === "reset") { await AudioStore.remove(AudioStore.active(), it.id); clips.delete(it.id); await audio.setClip(it.id, null); renderList(); }
+    if (b.dataset.a === "reset") { await AudioStore.remove(AudioStore.active(), it.id); clips.delete(it.id); await audio.setClip(it.id, null); renderList(); scheduleSync(); }
     if (b.dataset.a === "rec") startRec(it);
   });
   $("#aProfile").addEventListener("change", async e => { AudioStore.setActive(e.target.value); await loadActive(); renderList(); });
@@ -64,6 +103,7 @@ export function initAudioUI({ audio, net, show }) {
     await audio.setClip(it.id, blob);
     renderList();
     audio.preview(it);
+    scheduleSync();
   }
   function modal(it, who) {
     $("#rmWho").textContent = (it.who ? it.who + " · " : "") + who;

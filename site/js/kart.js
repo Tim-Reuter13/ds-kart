@@ -49,14 +49,15 @@ export class Racer {
 
   stats() { return this.driver.stats; }
 
-  hit(kind = "spin", t = 1.1) {
+  hit(kind = "spin", t = 1.1, info = {}) {
     if (this.invT > 0 || this.respawnT > 0) return false;
     this.spinT = Math.max(this.spinT, t);
     this.speed *= kind === "stop" ? 0.05 : 0.3;
     this.drift = null; this.driftLevel = 0;
     this.boostT = 0;
     if (this.pfand > 0) this.pfand = Math.max(0, this.pfand - 2);
-    this.events.push({ t: "hit" });
+    this.events.push({ t: "hit", by: info.by || null, item: info.item || null });
+    if (info.by && info.by !== this) info.by.events.push({ t: "scored", victim: this, item: info.item });
     return true;
   }
 
@@ -242,6 +243,19 @@ export class Racer {
     this.slopeVis = (this.slopeVis || 0) + ((this.air ? 0 : g.slope * Math.cos(this.heading - th)) - (this.slopeVis || 0)) * Math.min(1, dt * 8);
   }
 
+  // Darstellung fuer die Wiederholung
+  showAt(x, y, z, yaw, st, t, dt) {
+    const m = this.car.root;
+    this.rx = x; this.ry = y; this.rz = z; this.rh = yaw;
+    m.position.set(x, y, z); m.rotation.y = yaw;
+    this.car.body.rotation.set(0, 0, 0); this.car.body.scale.set(1, 1, 1);
+    this.car.update(dt, 22, 0);
+    const sh = this.car.shadow; sh.position.set(x, 0.16 + this.race_groundAt(x, z), z); sh.rotation.z = -yaw;
+    if (this.sprite) { this.sprite.state = st; this.sprite.stateT = t; this.sprite.place(x, y, z, yaw, true); m.visible = false; }
+    else m.visible = true;
+  }
+  race_groundAt() { return this.groundH || 0; }
+
   progress(L) { return this.finished ? 1e9 - this.finishTime : this.total; }
 
   syncModel(dt, alpha = 1) {
@@ -266,5 +280,6 @@ export class Racer {
     sh.material.opacity = Math.max(0.2, 1 - (this.y - (this.groundH || 0)) * 0.15);
     // Unsichtbar waehrend Respawn
     m.visible = this.respawnT <= 0 || Math.floor(this.respawnT * 10) % 2 === 0;
+    if (this.sprite) { this.sprite.update(dt, this); this.sprite.place(this.rx, this.ry, this.rz, m.rotation.y, m.visible); m.visible = false; }
   }
 }

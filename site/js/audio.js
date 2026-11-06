@@ -8,6 +8,11 @@ const LINES = {
   item: [["i", 0.1, 1.0, 1.05], ["a", 0.18, 1.2, 1.1]],
   win: [["a", 0.18, 1.0, 1.2], ["a", 0.18, 1.25, 1.4], ["e", 0.3, 1.5, 1.6]],
   lose: [["o", 0.55, 1.1, 0.72]],
+  boost: [["u", 0.12, 1.0, 1.2], ["u", 0.3, 1.3, 1.7]],
+  drift: [["i", 0.45, 1.1, 1.3]],
+  gotitem: [["o", 0.16, 1.2, 1.0], ["i", 0.16, 1.15, 1.3]],
+  flash: [["e", 0.2, 1.3, 1.25], ["a", 0.35, 1.2, 0.85]],
+  splash: [["a", 0.12, 1.4, 1.4], ["a", 0.25, 1.3, 1.0]],
 };
 
 export class Audio {
@@ -149,7 +154,12 @@ export class Audio {
   sfx(name) {
     if (!this.ensure()) return;
     const rec = this.buf.get("sfx." + name);
-    if (rec) { this.playBuf(rec, { gain: 1.3 }); return; }
+    if (rec) { this.playBuf(rec, { gain: name === "letsgo" ? 1.8 : 1.3 }); return; }
+    if (name === "letsgo") {
+      // Platzhalter, bis Sonja es einspricht
+      try { const u = new SpeechSynthesisUtterance("Let's go!"); u.lang = "en-US"; u.rate = 1.15; u.pitch = 1.35; u.volume = 1; speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) {}
+      return;
+    }
     switch (name) {
       case "beep": this.tone(440, 0.25, { vol: 0.3 }); break;
       case "go": this.tone(880, 0.6, { vol: 0.3 }); this.tone(1320, 0.6, { vol: 0.15, type: "triangle" }); break;

@@ -20,7 +20,7 @@ const blobs = Array.from({ length: 14 }, () => ({ x: Math.random(), y: 0.15 + Ma
 export class HUD {
   constructor(canvas) { this.c = canvas; this.g = canvas.getContext("2d"); this.msgs = new Map(); }
 
-  message(racer, text, t = 1.6, color = "#fff") { this.msgs.set(racer, { text, t, max: t, color }); }
+  message(racer, text, t = 1.6, color = "#fff", sub = "") { this.msgs.set(racer, { text, t, max: t, color, sub }); }
 
   draw(race, views, dt) {
     const g = this.g, dpr = devicePixelRatio || 1;
@@ -31,7 +31,7 @@ export class HUD {
     // Trennlinien
     g.fillStyle = "#111";
     if (views.length >= 2) g.fillRect(0, H / 2 - 2, W, 4);
-    if (views.length >= 3) g.fillRect(W / 2 - 2, 0, 4, H);
+    if (views.length >= 3) { const cols = race.humans.length <= 4 ? 2 : race.humans.length <= 6 ? 3 : 4; for (let c = 1; c < cols; c++) g.fillRect(W * c / cols - 2, 0, 4, H); }
     this.minimap(race, views, W, H);
     for (const [r, m] of this.msgs) { m.t -= dt; if (m.t <= 0) this.msgs.delete(r); }
   }
@@ -54,6 +54,14 @@ export class HUD {
         g.fillStyle = gr; g.beginPath(); g.arc(bx, by, rad, 0, 7); g.fill();
       }
       txt(g, "💨", x + w * 0.5, y + h * 0.18, 40 * u, "#fff", "center", EMOJI);
+    }
+    // Getroffen: roter Bildrand
+    if (r.hitFlash > 0) {
+      r.hitFlash -= dt;
+      const a = Math.min(1, r.hitFlash / 0.7);
+      const gr = g.createRadialGradient(x + w / 2, y + h / 2, Math.min(w, h) * 0.3, x + w / 2, y + h / 2, Math.max(w, h) * 0.75);
+      gr.addColorStop(0, "rgba(255,0,0,0)"); gr.addColorStop(1, `rgba(255,30,20,${0.65 * a})`);
+      g.fillStyle = gr; g.fillRect(x, y, w, h);
     }
     // Blitzer
     if (r.flashT > 3.0) { g.fillStyle = `rgba(255,255,255,${(r.flashT - 3.0) / 0.5})`; g.fillRect(x, y, w, h); }
@@ -150,7 +158,24 @@ export class HUD {
       txt(g, "LOS!", cx, cy, 120 * u, "#6aff7a", "center");
     }
     const m = this.msgs.get(r);
-    if (m) { g.globalAlpha = Math.min(1, m.t * 2); txt(g, m.text, cx, cy + 70 * u, 44 * u, m.color, "center"); g.globalAlpha = 1; }
+    if (m) {
+      const age = m.max - m.t, sc = age < 0.25 ? 0.6 + age / 0.25 * 0.5 : age < 0.4 ? 1.1 - (age - 0.25) / 0.15 * 0.1 : 1;
+      g.save(); g.globalAlpha = Math.min(1, m.t * 2); g.translate(cx, cy + 70 * u); g.scale(sc, sc);
+      g.font = `${44 * u}px ${FONT}`; const tw = g.measureText(m.text).width;
+      rrect(g, -tw / 2 - 22 * u, -34 * u, tw + 44 * u, (m.sub ? 96 : 68) * u, 20 * u); g.fillStyle = "rgba(10,14,28,0.55)"; g.fill();
+      txt(g, m.text, 0, 0, 44 * u, m.color, "center");
+      if (m.sub) txt(g, m.sub, 0, 40 * u, 24 * u, "#ffffff", "center", "Arial, sans-serif");
+      g.restore(); g.globalAlpha = 1;
+    }
+    // Warnungen vor anfliegenden Items
+    for (const o of race.items.objs) {
+      if (o.kind === "amt" && o.target === r && !r.finished) {
+        if (Math.floor(race.time * 6) % 2) txt(g, "🚓 ORDNUNGSAMT KOMMT!", cx, y + 128 * u, 34 * u, "#7fb0ff", "center");
+      } else if (o.kind === "jaegi" && o.owner !== r) {
+        const dx = r.x - o.x, dz = r.z - o.z, d = Math.hypot(dx, dz);
+        if (d < 38 && d > 2 && (Math.sin(o.h) * dx + Math.cos(o.h) * dz) / d > 0.9) txt(g, "⚠ 🍾 von hinten!", cx, y + 128 * u, 32 * u, "#ffb02a", "center", EMOJI);
+      }
+    }
     if (r.wrongT > 1.2 && !r.finished) txt(g, "Falsche Richtung!", cx, cy + 10 * u, 46 * u, "#ff6a5a", "center");
     if (r.finished) {
       txt(g, `ZIEL!  ${r.place}. Platz`, cx, cy, 64 * u, placeCol(r.place), "center");
@@ -159,12 +184,29 @@ export class HUD {
     g.restore();
   }
 
+  drawReplay(caption, i, n, prog) {
+    const g = this.g, dpr = devicePixelRatio || 1, W = this.c.width / dpr, H = this.c.height / dpr;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const bar = H * 0.1, u = Math.min(W, H * 1.6) / 900;
+    g.fillStyle = "#000"; g.fillRect(0, 0, W, bar); g.fillRect(0, H - bar, W, bar);
+    txt(g, "⭐ BEST OF", 24 * u, bar / 2, 30 * u, "#ffd23a", "left");
+    txt(g, `${i + 1} / ${n}`, W - 24 * u, bar / 2, 22 * u, "#fff", "right", "Arial, sans-serif");
+    const a = Math.min(1, prog * 7, (1 - prog) * 8);
+    g.globalAlpha = Math.max(0, a);
+    g.font = `${40 * u}px ${FONT}`; const cw = g.measureText(caption).width, fs = 40 * u * Math.min(1, W * 0.92 / Math.max(1, cw));
+    txt(g, caption, W / 2, H - bar - 46 * u, fs, "#ffffff", "center");
+    g.globalAlpha = 1;
+    txt(g, "Überspringen: OK / Leertaste / Klick", W / 2, H - bar / 2, 16 * u, "#9fb3d1", "center", "Arial, sans-serif");
+    g.fillStyle = "#ffd23a"; g.fillRect(0, bar - 4, W * ((i + prog) / n), 4);
+  }
+
   minimap(race, views, W, H) {
     const g = this.g, tr = race.track;
     let size, mx, my;
     if (views.length === 1) { size = Math.min(W, H) * 0.24; mx = 18; my = H - size - Math.min(W, H * 1.6) / 900 * 96 - 24; }
     else if (views.length === 2) { size = Math.min(W, H) * 0.2; mx = W - size - 16; my = H / 2 - size / 2; }
-    else { size = Math.min(W, H) * 0.22; mx = W / 2 - size / 2; my = H / 2 - size / 2; }
+    else if (views.length <= 4) { size = Math.min(W, H) * 0.22; mx = W / 2 - size / 2; my = H / 2 - size / 2; }
+    else { size = Math.min(W, H) * 0.17; mx = W / 2 - size / 2; my = H / 2 - size / 2; }
     if (!this.mm || this.mm.tr !== tr) {
       let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
       for (let i = 0; i < tr.n; i++) { x0 = Math.min(x0, tr.px[i]); x1 = Math.max(x1, tr.px[i]); z0 = Math.min(z0, tr.pz[i]); z1 = Math.max(z1, tr.pz[i]); }

@@ -3,14 +3,14 @@ import { RoundedBoxGeometry } from "../vendor/RoundedBoxGeometry.js";
 
 // Fahrerinnen und Fahrer. stats: speed/accel/handling/weight als Faktoren um 1
 export const DRIVERS = [
-  { id: "tim", name: "Tim", car: "Mercedes C-Klasse", type: "sedan", color: "#121316", accent: "#c9ccd1", hud: "#e04040",
-    shirt: "#2a2a2e", hair: "#2b1d14", hairStyle: "short", skin: "#f0c8a8", kitt: true, stats: { speed: 1.04, accel: 0.98, handling: 0.98, weight: 1.05 } },
+  { id: "tim", name: "Tim", car: "Mercedes C220 T-Modell", type: "sedan", color: "#b9bec4", accent: "#c9ccd1", hud: "#e04040",
+    shirt: "#2a2a2e", hair: "#2b1d14", hairStyle: "short", skin: "#f0c8a8", kitt: true, portrait: "sprites/tim/portrait.webp", stats: { speed: 1.04, accel: 0.98, handling: 0.98, weight: 1.05 } },
   { id: "sonja", name: "Sonja", car: "Kia Venga", type: "venga", color: "#d42f2a", accent: "#e8e8e8", hud: "#ff6a5a",
     shirt: "#f2a6c0", hair: "#5a3420", hairStyle: "long", skin: "#f3cfb2", stats: { speed: 0.98, accel: 1.06, handling: 1.05, weight: 0.94 } },
   { id: "jannik", name: "Jannik", car: "BMW X4", type: "x4", color: "#24508f", accent: "#d8dde3", hud: "#5aa0ff",
     shirt: "#f4f4f4", hair: "#c9a25a", hairStyle: "short", skin: "#efc6a4", stats: { speed: 1.05, accel: 0.97, handling: 0.95, weight: 1.12 } },
-  { id: "franzi", name: "Franzi", car: "VW Touran", type: "touran", color: "#c9ced4", accent: "#30353b", hud: "#c8d2dc",
-    shirt: "#3a9a5e", hair: "#8a5a2b", hairStyle: "pony", skin: "#f1cbae", stats: { speed: 1.0, accel: 1.02, handling: 1.01, weight: 1.06 } },
+  { id: "franzi", name: "Franzi", car: "VW Touran", type: "touran", color: "#1f62b8", accent: "#30353b", hud: "#c8d2dc",
+    shirt: "#3a9a5e", hair: "#8a5a2b", hairStyle: "pony", skin: "#f1cbae", portrait: "sprites/franzi/portrait.webp", stats: { speed: 1.0, accel: 1.02, handling: 1.01, weight: 1.06 } },
   { id: "toni", name: "Traktor-Toni", car: "Bulldog", type: "tractor", color: "#3d9a3a", accent: "#f0c42a", hud: "#7fd06a", cpu: true,
     shirt: "#3a5a8a", hair: "#6b6b6b", hairStyle: "cap", skin: "#e8b896", stats: { speed: 0.96, accel: 1.0, handling: 0.97, weight: 1.2 } },
   { id: "rudi", name: "Rentner Rudi", car: "Golf Diesel", type: "hatch", color: "#d6c38e", accent: "#8a7a50", hud: "#e0cf9a", cpu: true,

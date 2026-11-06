@@ -8,6 +8,8 @@ import { FX } from "./fx.js";
 import { initAI, driveAI } from "./ai.js";
 import { T } from "./tex.js";
 import { buildRaceDeco } from "./racedeco.js";
+import { SpriteCar } from "./sprites.js";
+import { Recorder, Replay } from "./replay.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const MSG = {
@@ -57,7 +59,7 @@ function inPoly(x, z, poly) {
 }
 
 export class Race {
-  constructor({ renderer, pipeline, hud, audio, net, inputs, def, data, players, cls = "golf", laps = 3, onEnd }) {
+  constructor({ sprites = {}, renderer, pipeline, hud, audio, net, inputs, def, data, players, cls = "golf", laps = 3, onEnd }) {
     this.renderer = renderer; this.pipeline = pipeline; this.quality = pipeline ? pipeline.q : { shadowSize: 2048, extras: 1 }; this.hud = hud; this.audio = audio; this.net = net; this.inputs = inputs;
     this.extra = def; this.data = data; this.cls = CLASSES[cls]; this.laps = laps; this.onEnd = onEnd;
     this.scene = new THREE.Scene();
@@ -94,6 +96,7 @@ export class Race {
       car.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
       this.scene.add(car.root); this.scene.add(car.shadow);
       const r = new Racer(d, car, { human: !p.cpu, player: p.cpu ? -1 : players.indexOf(p), id: i });
+      if (sprites[d.id]) { r.sprite = new SpriteCar(sprites[d.id]); this.scene.add(r.sprite.mesh); }
       r.dev = p.dev;
       const row = Math.floor(i / 2), side = i % 2 ? 1 : -1;
       r.place_on_grid(this.track, this.track.L - 8 - row * 7 - (side > 0 ? 3.5 : 0), side * this.track.W * 0.23);
@@ -103,6 +106,8 @@ export class Race {
     this.humans = this.racers.filter(r => r.human).sort((a, b) => a.player - b.player);
     this.items = new Items(this);
     this.deco = buildRaceDeco(this);
+    this.rec = new Recorder(this);
+    this.replay = null;
 
     // Kameras
     this.cams = this.humans.map(() => { const c = new THREE.PerspectiveCamera(68, 1, 0.5, 2000); c.userData = { pos: null, look: new THREE.Vector3() }; return c; });
@@ -115,6 +120,9 @@ export class Race {
     this.audio.music(def.music);
     this.beeped = 5;
   }
+
+  // Fahrerspruch mit Mindestabstand je Spruch
+  say(r, line, gap) { r.vT ||= {}; if ((r.vT[line] || -99) > this.time) return; r.vT[line] = this.time + gap; this.audio.voice(r.driver.id, line); }
 
   nearHuman(r, d) { return this.humans.some(h => (h.x - r.x) ** 2 + (h.z - r.z) ** 2 < d * d); }
 
@@ -131,6 +139,12 @@ export class Race {
 
   update(dt) {
     if (this.paused || this.ended) return;
+    if (this.replay) {
+      this.replay.update(dt);
+      this.world.update(dt, this.time + 100); this.deco.update(dt, this.time + 100);
+      if (this.replay.done) this.endNow();
+      return;
+    }
     this.acc = Math.min(this.acc + dt, 0.25);
     const STEP = 1 / 60;
     while (this.acc >= STEP) { this.tick(STEP); this.acc -= STEP; }
@@ -153,8 +167,8 @@ export class Race {
         if (!inp.gas) this.rocket.delete(h);
       }
       if (this.countdown <= 0) {
-        this.started = true; this.time = 0; this.sfx("go");
-        this.humans.forEach((h, i) => setTimeout(() => this.audio.voice(h.driver.id, "start"), 300 + i * 420));
+        this.started = true; this.time = 0; this.sfx("go"); this.sfx("letsgo");
+        this.humans.forEach((h, i) => setTimeout(() => this.audio.voice(h.driver.id, "start"), 1100 + i * 420));
         for (const h of this.humans) {
           const t0 = this.rocket.get(h);
           if (t0 !== undefined && t0 < 1.6 && t0 > 0.6) { h.boost(1.0); this.hud.message(h, "Raketenstart!", 1.2, "#6aff7a"); }
@@ -174,6 +188,7 @@ export class Race {
     }
     for (const r of this.racers) r.step(dt, this);
     this.deco.tick(dt);
+    this.rec.tick(dt);
 
     // Zusammenstoesse
     const R = 3.2;
@@ -186,8 +201,8 @@ export class Race {
       const wa = a.driver.stats.weight, wb = b.driver.stats.weight;
       const ka = wb / (wa + wb), kb = wa / (wa + wb);
       a.x -= nx * over * ka; a.z -= nz * over * ka; b.x += nx * over * kb; b.z += nz * over * kb;
-      if (a.invT > 0 && b.invT <= 0) b.hit("spin", 1.0);
-      else if (b.invT > 0 && a.invT <= 0) a.hit("spin", 1.0);
+      if (a.invT > 0 && b.invT <= 0) b.hit("spin", 1.0, { by: a, item: "doener" });
+      else if (b.invT > 0 && a.invT <= 0) a.hit("spin", 1.0, { by: b, item: "doener" });
       else { a.speed *= 0.985; b.speed *= 0.985; if (a.human) a.events.push({ t: "bump" }); if (b.human) b.events.push({ t: "bump" }); }
     }
 
@@ -246,16 +261,22 @@ export class Race {
     for (const r of this.racers) {
       for (const e of r.events) {
         const hum = r.human;
+        if (r.sprite) { if (e.t === "hit") r.sprite.play("schaden", 1.2); else if (e.t === "vape") r.sprite.play("vape"); else if (["throw", "drop", "camera", "siren", "doener", "lighter"].includes(e.t)) r.sprite.play("werfen"); }
         if (hum && RUMBLE[e.t] && r.dev?.startsWith("ph")) this.net.send(r.dev, { t: "rumble", ms: RUMBLE[e.t] });
         switch (e.t) {
-          case "hit": if (hum) { this.sfx("hit"); this.hud.message(r, pick(MSG.hit), 1.4, "#ffb0a0"); this.audio.voice(r.driver.id, "hit"); } else if (this.nearHuman(r, 45) && Math.random() < 0.4) this.audio.voice(r.driver.id, "hit"); break;
+          case "hit": this.rec.event("hit", { victim: r.id, by: e.by ? e.by.id : null, item: e.item }, (hum || (e.by && e.by.human) ? 5 : 2) + (e.item === "amt" || e.item === "blitzer" ? 1 : 0));
+            if (hum) { this.sfx("hit"); r.hitFlash = 0.7; r.shakeReq = 1.1;
+            const it = e.item && ITEMS[e.item];
+            const txt = e.by && e.by !== r ? `${it ? it.icon + " " : ""}${e.by.driver.name} hat dich erwischt!` : e.by === r ? "Eigentor! 🤦" : pick(MSG.hit);
+            this.hud.message(r, txt, 2.2, "#ff8a7a", it && e.by !== r ? it.name : ""); this.audio.voice(r.driver.id, "hit"); } else if (this.nearHuman(r, 45) && Math.random() < 0.4) this.audio.voice(r.driver.id, "hit"); break;
           case "wall": if (hum) this.sfx("wall"); break;
+          case "scored": if (hum) { this.hud.message(r, `🎯 Treffer! ${e.victim.driver.name} erwischt`, 1.6, "#6aff7a"); if (r.dev?.startsWith("ph")) this.net.send(r.dev, { t: "rumble", ms: 60 }); } break;
           case "box": if (hum) this.sfx("box"); break;
-          case "got": if (hum) this.sfx("got"); break;
-          case "boost": if (hum) { this.sfx("boost"); r.shakeReq = 0.6; } break;
-          case "spark": if (hum) this.sfx("spark"); break;
+          case "got": if (hum) { this.sfx("got"); this.say(r, "gotitem", 6); } break;
+          case "boost": if (hum) { this.sfx("boost"); r.shakeReq = 0.6; this.say(r, "boost", 5); } break;
+          case "spark": if (hum) { this.sfx("spark"); if (e.lvl >= 3) this.say(r, "drift", 6); } break;
           case "pfand": if (hum) { this.sfx("pfand"); if (r.pfand === 10) this.hud.message(r, MSG.pfandFull[0], 1.5, "#ffd23a"); } break;
-          case "flash": if (hum) this.hud.message(r, pick(MSG.flash), 2, "#ffffff"); break;
+          case "flash": if (hum) { this.hud.message(r, pick(MSG.flash), 2, "#ffffff"); this.say(r, "flash", 2); } break;
           case "camera": this.sfx("camera"); if (hum) this.audio.voice(r.driver.id, "item"); if (hum) this.hud.message(r, "📸 Blitzer aufgestellt!", 1.5, "#ffd23a"); break;
           case "blind": if (hum) { this.sfx("blind"); this.hud.message(r, pick(MSG.blind), 1.6, "#eef2ff"); } break;
           case "vape": this.sfx("vape"); break;
@@ -265,9 +286,10 @@ export class Race {
           case "lighter": if (hum) this.sfx("lighter"); break;
           case "throw": if (hum) { this.sfx("throw"); this.audio.voice(r.driver.id, "item"); } break;
           case "drop": if (hum) { this.sfx("drop"); this.audio.voice(r.driver.id, "item"); } break;
-          case "splash": if (hum) this.sfx("splash"); break;
-          case "trick": if (hum) this.sfx("trick"); break;
-          case "finish": if (hum) { this.sfx("finish"); const d = r.driver.id, w = r.place <= 3; setTimeout(() => this.audio.voice(d, w ? "win" : "lose"), 700); } break;
+          case "splash": if (hum) { this.sfx("splash"); this.say(r, "splash", 2); } break;
+          case "trick": if (hum) this.sfx("trick"); this.rec.event("jump", { who: r.id }, r.human ? 3 : 1.5); break;
+          case "finish": if (r.place === 1) this.rec.event("win", { who: r.id }, 10);
+            if (hum) { this.sfx("finish"); const d = r.driver.id, w = r.place <= 3; setTimeout(() => this.audio.voice(d, w ? "win" : "lose"), 700); } break;
         }
       }
       r.events.length = 0;
@@ -279,7 +301,10 @@ export class Race {
     const v = [];
     if (n <= 1) v.push({ x: 0, y: 0, w: W, h: H });
     else if (n === 2) { v.push({ x: 0, y: 0, w: W, h: H / 2 }, { x: 0, y: H / 2, w: W, h: H / 2 }); }
-    else { v.push({ x: 0, y: 0, w: W / 2, h: H / 2 }, { x: W / 2, y: 0, w: W / 2, h: H / 2 }, { x: 0, y: H / 2, w: W / 2, h: H / 2 }, { x: W / 2, y: H / 2, w: W / 2, h: H / 2 }); }
+    else {
+      const cols = n <= 4 ? 2 : n <= 6 ? 3 : 4;
+      for (let row = 0; row < 2; row++) for (let c = 0; c < cols; c++) v.push({ x: c * W / cols, y: row * H / 2, w: W / cols, h: H / 2 });
+    }
     return v;
   }
 
@@ -316,7 +341,7 @@ export class Race {
       const t = clamp((this.countdown - 1.0) / 3.2, 0, 1);
       if (t > 0) {
         const a = t * 2.4;
-        cam.position.set(r.x + Math.sin(r.heading + Math.PI + a) * (dist + t * 10), r.y + height + t * 6, r.z + Math.cos(r.heading + Math.PI + a) * (dist + t * 10));
+        cam.position.set(r.x + Math.sin(r.heading + Math.PI + a) * (dist + t * 5), r.y + height + t * 9, r.z + Math.cos(r.heading + Math.PI + a) * (dist + t * 5));
         cam.lookAt(r.x, r.y + 1, r.z);
       }
     }
@@ -325,6 +350,22 @@ export class Race {
   render(dt) {
     const rd = this.renderer;
     const W = rd.domElement.clientWidth, H = rd.domElement.clientHeight;
+    if (this.replay) {
+      const rp = this.replay, cam = rp.cam;
+      cam.aspect = W / H; cam.updateProjectionMatrix();
+      const fr = this.racers[0];
+      const draw = (target) => {
+        const pr = rd.getPixelRatio();
+        this.sun.target.position.set(cam.position.x, cam.position.y, cam.position.z); this.sun.position.set(cam.position.x + this.sunDir.x * 200, cam.position.y + this.sunDir.y * 200, cam.position.z + this.sunDir.z * 200); this.sun.target.updateMatrixWorld();
+        if (target) { target.viewport.set(0, 0, W * pr, H * pr); target.scissor.copy(target.viewport); target.scissorTest = false; rd.setRenderTarget(target); }
+        else { rd.setViewport(0, 0, W, H); rd.setScissorTest(false); }
+        rd.render(this.scene, cam);
+      };
+      if (this.pipeline) this.pipeline.render(draw); else draw(null);
+      const e = rp.clips[Math.min(rp.ci, rp.clips.length - 1)];
+      this.hud.drawReplay(e ? rp.caption(e) : "", rp.ci, rp.clips.length, rp.t / 7);
+      return;
+    }
     const views = this.views(W, H);
     const hv = [];
     // Kameras einmal pro Bild aktualisieren
@@ -340,11 +381,22 @@ export class Race {
       const pr = rd.getPixelRatio();
       rd.setClearColor("#000");
       if (!target) rd.setScissorTest(true);
+      const many = cams.length > 4;
+      const sc = this.sun.shadow.camera, ext = many ? 150 : 75;
+      if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix(); }
+      rd.shadowMap.autoUpdate = !many;
+      if (many) {
+        let mx = 0, mz = 0; for (const h of this.humans) { mx += h.x; mz += h.z; } mx /= this.humans.length; mz /= this.humans.length;
+        this.sun.target.position.set(mx, this.humans[0].y, mz); this.sun.position.set(mx + this.sunDir.x * 260, this.humans[0].y + this.sunDir.y * 260, mz + this.sunDir.z * 260); this.sun.target.updateMatrixWorld();
+        rd.shadowMap.needsUpdate = true;
+      }
       for (const { v, cam, focus } of cams) {
         const fx = (focus.rx ?? focus.x) + Math.sin(focus.heading) * 30, fz = (focus.rz ?? focus.z) + Math.cos(focus.heading) * 30;
+        if (!many) {
         this.sun.target.position.set(fx, focus.y, fz);
         this.sun.position.set(fx + this.sunDir.x * 200, focus.y + this.sunDir.y * 200, fz + this.sunDir.z * 200);
         this.sun.target.updateMatrixWorld();
+        }
         if (target) {
           target.viewport.set(v.x * pr, (H - v.y - v.h) * pr, v.w * pr, v.h * pr);
           target.scissor.copy(target.viewport); target.scissorTest = true;
@@ -372,11 +424,21 @@ export class Race {
   }
 
   finish() {
+    if (this.ended || this.replay) return;
+    this.audio.stopEngines();
+    this.finalResults = this.results();
+    const rp = new Replay(this, this.rec);
+    if (rp.done) { this.endNow(); return; }
+    this.replay = rp;
+    this.fx.clear();
+  }
+  skipReplay() { if (this.replay) { this.replay.done = true; } }
+  endNow() {
     if (this.ended) return;
     this.ended = true;
     this.audio.stopEngines();
     this.audio.stopMusic();
-    this.onEnd && this.onEnd(this.results());
+    this.onEnd && this.onEnd(this.finalResults || this.results());
   }
 
   dispose() {

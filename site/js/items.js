@@ -183,7 +183,7 @@ export class Items {
       case "blitzer": {
         for (const o of race.racers) {
           if (o === r || o.invT > 0) continue;
-          o.flashT = 3.5; o.hit("spin", 0.7); o.item = null; o.itemCount = 0; o.roulette = 0;
+          o.flashT = 3.5; o.hit("spin", 0.7, { by: r, item: "blitzer" }); o.item = null; o.itemCount = 0; o.roulette = 0;
           o.events.push({ t: "flash" });
         }
         r.events.push({ t: "camera" });
@@ -280,7 +280,7 @@ export class Items {
         L[0].material.color.set(on ? "#2060ff" : "#0a1a40"); L[1].material.color.set(on ? "#ffffff" : "#888888");
         if (o.total >= tgt.total - 1 || tgt.finished) {
           // Kontrolle!
-          for (const r of race.racers) if ((r.x - o.x) ** 2 + (r.z - o.z) ** 2 < 100 && r !== o.owner) { r.hit("stop", 2.2); r.events.push({ t: "kontrolle" }); }
+          for (const r of race.racers) if ((r.x - o.x) ** 2 + (r.z - o.z) ** 2 < 100 && r !== o.owner) { r.hit("stop", 2.2, { by: o.owner, item: "amt" }); r.events.push({ t: "kontrolle" }); }
           for (let k = 0; k < 40; k++) race.fx.spawn("spark", o.x, o.y, o.z, { size: 2, life: 0.9, vx: (Math.random() - 0.5) * 22, vy: Math.random() * 10, vz: (Math.random() - 0.5) * 22, color: k % 2 ? "#3070ff" : "#ffffff", grav: 10 });
           race.sfx("kontrolle");
           dead = true;
@@ -291,7 +291,7 @@ export class Items {
           if (o.safe > 0 && r === o.owner) continue;
           if (r.respawnT > 0 || Math.abs(r.y - (o.y || 0)) > 2.5) continue;
           if ((r.x - o.x) ** 2 + (r.z - o.z) ** 2 < (o.r + 1.1) ** 2) {
-            if (r.hit("spin", o.kind === "kasten" ? 1.3 : 1.1) || r.invT > 0) {
+            if (r.hit("spin", o.kind === "kasten" ? 1.3 : 1.1, { by: o.owner, item: o.kind }) || r.invT > 0) {
               dead = true;
               for (let k = 0; k < 12; k++) race.fx.spawn("spark", o.x, (o.y || 0) + 1, o.z, { size: 0.9, life: 0.5, vx: (Math.random() - 0.5) * 12, vy: Math.random() * 7, vz: (Math.random() - 0.5) * 12, color: "#ffe0a0", grav: 12 });
             }
