@@ -7,6 +7,7 @@ import { Items, ITEMS } from "./items.js";
 import { FX } from "./fx.js";
 import { initAI, driveAI } from "./ai.js";
 import { T } from "./tex.js";
+import { buildRaceDeco } from "./racedeco.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const MSG = {
@@ -56,8 +57,8 @@ function inPoly(x, z, poly) {
 }
 
 export class Race {
-  constructor({ renderer, hud, audio, net, inputs, def, data, players, cls = "golf", laps = 3, onEnd }) {
-    this.renderer = renderer; this.hud = hud; this.audio = audio; this.net = net; this.inputs = inputs;
+  constructor({ renderer, pipeline, hud, audio, net, inputs, def, data, players, cls = "golf", laps = 3, onEnd }) {
+    this.renderer = renderer; this.pipeline = pipeline; this.quality = pipeline ? pipeline.q : { shadowSize: 2048, extras: 1 }; this.hud = hud; this.audio = audio; this.net = net; this.inputs = inputs;
     this.extra = def; this.data = data; this.cls = CLASSES[cls]; this.laps = laps; this.onEnd = onEnd;
     this.scene = new THREE.Scene();
     this.scene.environment = window.__env || null;
@@ -66,7 +67,7 @@ export class Race {
     this.scene.add(new THREE.HemisphereLight("#dcecff", "#7a8a5a", 1.15));
     const sun = new THREE.DirectionalLight("#fff1d6", 2.6);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(this.quality.shadowSize, this.quality.shadowSize);
     const sc = sun.shadow.camera; sc.left = -75; sc.right = 75; sc.top = 75; sc.bottom = -75; sc.near = 1; sc.far = 400;
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
     this.scene.add(sun); this.scene.add(sun.target);
@@ -76,7 +77,7 @@ export class Race {
     this.track = new Track(data, def);
     if (def.setup) def.setup(this.track, data);
     this.track.setRamps(def.ramps || []);
-    this.world = buildWorld(this.scene, this.track, data, def);
+    this.world = buildWorld(this.scene, this.track, data, def, this.quality);
     for (const r of this.track.ramps) this.scene.add(rampMesh(this.track, r, def.style === "lake"));
     this.fx = new FX(this.scene);
 
@@ -101,6 +102,7 @@ export class Race {
     });
     this.humans = this.racers.filter(r => r.human).sort((a, b) => a.player - b.player);
     this.items = new Items(this);
+    this.deco = buildRaceDeco(this);
 
     // Kameras
     this.cams = this.humans.map(() => { const c = new THREE.PerspectiveCamera(68, 1, 0.5, 2000); c.userData = { pos: null, look: new THREE.Vector3() }; return c; });
@@ -133,6 +135,7 @@ export class Race {
     const STEP = 1 / 60;
     while (this.acc >= STEP) { this.tick(STEP); this.acc -= STEP; }
     this.world.update(dt, this.time + 100);
+    this.deco.update(dt, this.time + 100);
     this.fx.update(dt);
     const alpha = Math.min(1, this.acc / STEP);
     for (const r of this.racers) r.syncModel(dt, alpha);
@@ -170,6 +173,7 @@ export class Race {
       } else driveAI(r, this, dt);
     }
     for (const r of this.racers) r.step(dt, this);
+    this.deco.tick(dt);
 
     // Zusammenstoesse
     const R = 3.2;
@@ -218,9 +222,17 @@ export class Race {
         for (const sd of [-1, 1]) if (Math.random() < dt * 40) this.fx.spawn(r.driftLevel ? "spark" : "smoke", backX + rx * sd * 0.9, r.y + 0.3, backZ + rz * sd * 0.9,
           { color: col, size: r.driftLevel ? 0.7 + r.driftLevel * 0.15 : 0.9, life: r.driftLevel ? 0.35 : 0.6, vx: -fx * 3 + (Math.random() - 0.5) * 4, vy: 2 + Math.random() * 2, vz: -fz * 3 + (Math.random() - 0.5) * 4, grav: 8, alpha: 0.9 });
       }
-      if (r.boostT > 0 && Math.random() < dt * 50) {
-        this.fx.spawn("spark", backX, r.y + 0.6, backZ, { color: r.boostKind === 2 ? "#ff5a2a" : "#ffb03a", size: 1.3, life: 0.3, vx: -fx * 8, vy: 1, vz: -fz * 8, alpha: 0.95 });
+      if (r.boostT > 0) {
+        for (const sd of [-0.45, 0.45]) if (Math.random() < dt * 45) {
+          this.fx.spawn("spark", backX + rx * sd, r.y + 0.55, backZ + rz * sd, { color: r.boostKind === 2 ? "#b46bff" : "#4ad2ff", size: 1.5, grow: 0.3, life: 0.28, vx: -fx * 9 + (Math.random() - 0.5), vy: 0.8, vz: -fz * 9 + (Math.random() - 0.5), alpha: 1 });
+          this.fx.spawn("spark", backX + rx * sd, r.y + 0.55, backZ + rz * sd, { color: "#ffffff", size: 0.7, grow: 0.2, life: 0.14, vx: -fx * 6, vy: 0.5, vz: -fz * 6, alpha: 1 });
+        }
       }
+      // Reifenrauch beim Driften und scharfen Lenken
+      if (!r.air && Math.abs(r.speed) > 10 && (r.drift || Math.abs(r.steerVis || 0) > 0.9) && Math.random() < dt * (r.drift ? 26 : 8)) {
+        for (const sd of [-1, 1]) this.fx.spawn("smoke", backX + rx * sd * 0.9, r.y + 0.35, backZ + rz * sd * 0.9, { color: "#f2f2f2", size: 1.0, grow: 3.2, life: 0.9, vx: -fx * 2, vy: 1.2, vz: -fz * 2, alpha: 0.45, drag: 0.4 });
+      }
+      if (r.squash > 0.23 && !r.landShook) { r.landShook = true; if (r.human) r.shakeReq = 0.5; } else if (r.squash <= 0) r.landShook = false;
       if (Math.abs(r.d) > this.track.half + 3.4 && Math.abs(r.speed) > 6 && !r.air && Math.random() < dt * 20) {
         this.fx.spawn("smoke", backX, 0.5, backZ, { color: this.extra.style === "lake" ? "#d8c49a" : "#9a8a5a", size: 1.2, grow: 2.5, life: 0.8, vy: 1, alpha: 0.5 });
       }
@@ -240,7 +252,7 @@ export class Race {
           case "wall": if (hum) this.sfx("wall"); break;
           case "box": if (hum) this.sfx("box"); break;
           case "got": if (hum) this.sfx("got"); break;
-          case "boost": if (hum) this.sfx("boost"); break;
+          case "boost": if (hum) { this.sfx("boost"); r.shakeReq = 0.6; } break;
           case "spark": if (hum) this.sfx("spark"); break;
           case "pfand": if (hum) { this.sfx("pfand"); if (r.pfand === 10) this.hud.message(r, MSG.pfandFull[0], 1.5, "#ffd23a"); } break;
           case "flash": if (hum) this.hud.message(r, pick(MSG.flash), 2, "#ffffff"); break;
@@ -272,25 +284,35 @@ export class Race {
   }
 
   updateCam(cam, r0, dt, tv = false) {
-    const r = { x: r0.rx ?? r0.x, y: r0.ry ?? r0.y, z: r0.rz ?? r0.z, heading: r0.rh ?? r0.heading, input: r0.input, human: r0.human, boostT: r0.boostT, speed: r0.speed };
+    const r = { x: r0.rx ?? r0.x, y: r0.ry ?? r0.y, z: r0.rz ?? r0.z, heading: r0.rh ?? r0.heading };
     const fx = Math.sin(r.heading), fz = Math.cos(r.heading);
-    const back = !tv && r.input.back && r.human && !(r0.dev || '').startsWith('ph');
-    const dist = tv ? 11 : 7.4, height = tv ? 5 : 3.2;
+    const back = !tv && r0.input.back && r0.human && !(r0.dev || "").startsWith("ph");
+    const u = cam.userData;
+    const sp = Math.abs(r0.speed), top = this.cls.top;
+    // beim Boost zieht die Kamera leicht zurueck
+    u.pull = (u.pull || 0) + (((r0.boostT > 0) ? 1.6 : 0) + Math.min(1, sp / top) * 0.6 - (u.pull || 0)) * Math.min(1, dt * 3);
+    const dist = (tv ? 11 : 7.0) + u.pull, height = tv ? 5 : 3.0 + u.pull * 0.15;
     const sgn = back ? -1 : 1;
     const want = new THREE.Vector3(r.x - fx * dist * sgn, r.y + height, r.z - fz * dist * sgn);
-    const look = new THREE.Vector3(r.x + fx * 5 * sgn, r.y + 1.3, r.z + fz * 5 * sgn);
-    const u = cam.userData;
+    const look = new THREE.Vector3(r.x + fx * 6 * sgn, r.y + 1.25, r.z + fz * 6 * sgn);
     if (!u.pos || back !== u.back) { u.pos = want.clone(); u.look.copy(look); u.back = back; }
-    const k = 1 - Math.exp(-dt * (back ? 30 : 7));
-    u.pos.lerp(want, k);
+    u.pos.lerp(want, 1 - Math.exp(-dt * (back ? 30 : 7.5)));
     u.pos.y = Math.max(u.pos.y, r.y + 1.6, this.track.heightAt(u.pos.x, u.pos.z) + 1.4);
     u.look.lerp(look, 1 - Math.exp(-dt * 12));
-    cam.position.copy(u.pos);
+    // Wackeln bei Boost-Start und Landung
+    u.shake = Math.max(0, (u.shake || 0) - dt * 2.2);
+    if (r0.shakeReq) { u.shake = Math.max(u.shake, r0.shakeReq); r0.shakeReq = 0; }
+    const sh = u.shake * u.shake;
+    cam.position.set(u.pos.x + (Math.random() - 0.5) * sh * 0.5, u.pos.y + (Math.random() - 0.5) * sh * 0.4, u.pos.z + (Math.random() - 0.5) * sh * 0.5);
+    cam.up.set(0, 1, 0);
     cam.lookAt(u.look);
-    const fov = 66 + (r.boostT > 0 ? 9 : 0) + Math.min(6, Math.abs(r.speed) / 6);
+    // leichte Neigung in Kurven
+    u.roll = (u.roll || 0) + ((tv ? 0 : (r0.steerVis || 0) * Math.min(1, sp / 22) * 0.045 + (r0.drift ? r0.drift.dir * 0.025 : 0)) - (u.roll || 0)) * Math.min(1, dt * 5);
+    cam.rotateZ(u.roll);
+    // Sichtfeld je nach Tempo
+    const fov = 64 + Math.min(1, sp / top) * 9 + (r0.boostT > 0 ? 8 : 0);
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 4);
     if (!this.started && !tv) {
-      // Kamerafahrt vor dem Start
       const t = clamp((this.countdown - 1.0) / 3.2, 0, 1);
       if (t > 0) {
         const a = t * 2.4;
@@ -304,29 +326,39 @@ export class Race {
     const rd = this.renderer;
     const W = rd.domElement.clientWidth, H = rd.domElement.clientHeight;
     const views = this.views(W, H);
-    rd.setScissorTest(true);
-    rd.setClearColor("#000");
     const hv = [];
-    views.forEach((v, i) => {
+    // Kameras einmal pro Bild aktualisieren
+    const cams = views.map((v, i) => {
       let cam, r = this.humans[i];
       if (r) { cam = this.cams[i]; this.updateCam(cam, r, dt); }
-      else {
-        cam = this.tvCam;
-        const lead = this.racers.slice().sort((a, b) => a.place - b.place)[0];
-        this.updateCam(cam, lead, dt, true);
-      }
+      else { cam = this.tvCam; const lead = this.racers.slice().sort((a, b) => a.place - b.place)[0]; this.updateCam(cam, lead, dt, true); }
       cam.aspect = v.w / v.h; cam.updateProjectionMatrix();
-      const focus = r || this.racers[0];
-      const fx = focus.x + Math.sin(focus.heading) * 30, fz = focus.z + Math.cos(focus.heading) * 30;
-      this.sun.target.position.set(fx, focus.y, fz);
-      this.sun.position.set(fx + this.sunDir.x * 200, focus.y + this.sunDir.y * 200, fz + this.sunDir.z * 200);
-      this.sun.target.updateMatrixWorld();
-      rd.setViewport(v.x, H - v.y - v.h, v.w, v.h);
-      rd.setScissor(v.x, H - v.y - v.h, v.w, v.h);
-      rd.render(this.scene, cam);
       if (r) hv.push({ ...v, racer: r });
+      return { v, cam, focus: r || this.racers[0] };
     });
-    rd.setScissorTest(false);
+    const draw = (target) => {
+      const pr = rd.getPixelRatio();
+      rd.setClearColor("#000");
+      if (!target) rd.setScissorTest(true);
+      for (const { v, cam, focus } of cams) {
+        const fx = (focus.rx ?? focus.x) + Math.sin(focus.heading) * 30, fz = (focus.rz ?? focus.z) + Math.cos(focus.heading) * 30;
+        this.sun.target.position.set(fx, focus.y, fz);
+        this.sun.position.set(fx + this.sunDir.x * 200, focus.y + this.sunDir.y * 200, fz + this.sunDir.z * 200);
+        this.sun.target.updateMatrixWorld();
+        if (target) {
+          target.viewport.set(v.x * pr, (H - v.y - v.h) * pr, v.w * pr, v.h * pr);
+          target.scissor.copy(target.viewport); target.scissorTest = true;
+          rd.setRenderTarget(target);
+        } else {
+          rd.setViewport(v.x, H - v.y - v.h, v.w, v.h);
+          rd.setScissor(v.x, H - v.y - v.h, v.w, v.h);
+        }
+        rd.render(this.scene, cam);
+      }
+      if (target) { target.scissorTest = false; target.viewport.set(0, 0, target.width, target.height); target.scissor.set(0, 0, target.width, target.height); }
+      else rd.setScissorTest(false);
+    };
+    if (this.pipeline) this.pipeline.render(draw); else draw(null);
     this.hud.draw(this, hv, dt);
     for (const h of this.humans) this.audio.engine(h.id, h.speed, h.boostT > 0, this.started || this.countdown < 3.5, h.driver.id);
   }

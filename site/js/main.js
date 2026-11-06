@@ -9,6 +9,7 @@ import { CLASSES } from "./kart.js";
 import { TRACKS } from "./tracks.js";
 import { RoomEnvironment } from "../vendor/RoomEnvironment.js";
 import { initAudioUI } from "./audioui.js";
+import { Pipeline } from "./render.js";
 
 const $ = (s) => document.querySelector(s);
 const renderer = new THREE.WebGLRenderer({ canvas: $("#gl"), antialias: true, powerPreference: "high-performance" });
@@ -20,6 +21,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const pmrem = new THREE.PMREMGenerator(renderer);
 window.__env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+const pipeline = new Pipeline(renderer);
+window.__pipeline = pipeline;
 const hudCanvas = $("#hud");
 const hud = new HUD(hudCanvas);
 const audio = new Audio();
@@ -31,6 +34,7 @@ function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   const dpr = devicePixelRatio || 1;
   hudCanvas.width = innerWidth * dpr; hudCanvas.height = innerHeight * dpr;
+  if (window.__pipeline) window.__pipeline.resize();
 }
 addEventListener("resize", resize); resize();
 
@@ -158,7 +162,7 @@ async function startRace() {
   await new Promise(r => setTimeout(r, 30));
   if (state.race) { state.race.dispose(); state.race = null; }
   const players = state.players.map(p => ({ dev: p.dev, driver: DRIVERS[p.di].id }));
-  state.race = new Race({ renderer, hud, audio, net, inputs, def, data: cache[def.id], players, cls: state.cls, laps: state.laps, onEnd: showResults });
+  state.race = new Race({ renderer, pipeline, hud, audio, net, inputs, def, data: cache[def.id], players, cls: state.cls, laps: state.laps, onEnd: showResults });
   window.__race = state.race;
   if (new URLSearchParams(location.search).has("auto")) state.race.autopilot = true;
   show("race");

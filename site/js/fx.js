@@ -10,6 +10,7 @@ export class FX {
     this.mats = {
       smoke: new THREE.SpriteMaterial({ map: T.smoke(), transparent: true, depthWrite: false }),
       spark: new THREE.SpriteMaterial({ map: T.spark(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+      confetti: new THREE.SpriteMaterial({ transparent: true, depthWrite: false }),
     };
   }
   spawn(kind, x, y, z, o = {}) {
@@ -17,14 +18,15 @@ export class FX {
     let sp = this.pool.pop();
     if (!sp) { sp = new THREE.Sprite(this.mats.smoke.clone()); sp.renderOrder = 20; this.scene.add(sp); }
     const base = this.mats[kind] || this.mats.smoke;
-    sp.material.map = base.map; sp.material.blending = base.blending;
+    if (sp.material.map !== base.map) { sp.material.map = base.map; sp.material.needsUpdate = true; }
+    sp.material.blending = base.blending; sp.material.rotation = Math.random() * 6;
     sp.material.color.set(o.color || "#ffffff");
     sp.material.opacity = o.alpha ?? 0.8;
     sp.position.set(x, y, z);
     sp.visible = true;
     const s = o.size ?? 1;
     sp.scale.set(s, s, 1);
-    this.live.push({ sp, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0, life: o.life ?? 1, max: o.life ?? 1, grow: o.grow ?? 1, size: s, alpha: o.alpha ?? 0.8, drag: o.drag ?? 1, grav: o.grav || 0 });
+    this.live.push({ sp, vx: o.vx || 0, vy: o.vy || 0, vz: o.vz || 0, life: o.life ?? 1, max: o.life ?? 1, grow: o.grow ?? 1, size: s, alpha: o.alpha ?? 0.8, drag: o.drag ?? 1, grav: o.grav || 0, spin: o.spin || 0, flat: kind === "confetti" });
   }
   update(dt) {
     for (let i = this.live.length - 1; i >= 0; i--) {
@@ -37,7 +39,8 @@ export class FX {
       const t = 1 - p.life / p.max;
       const s = p.size * (1 + (p.grow - 1) * t);
       p.sp.scale.set(s, s, 1);
-      p.sp.material.opacity = p.alpha * (1 - t);
+      p.sp.material.opacity = p.flat ? p.alpha * Math.min(1, (1 - t) * 4) : p.alpha * (1 - t);
+      if (p.spin) { p.sp.material.rotation += p.spin * dt; p.sp.scale.x = s * Math.abs(Math.cos(p.sp.material.rotation * 1.7)) + 0.02; }
     }
   }
   clear() { for (const p of this.live) { p.sp.visible = false; this.pool.push(p.sp); } this.live.length = 0; }
