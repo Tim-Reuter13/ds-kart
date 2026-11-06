@@ -163,7 +163,7 @@ export class Race {
       if (r.human && (r.finished || this.autopilot)) { if (!r.ai) initAI(r, this.track); driveAI(r, this, dt); if (r.finished) r.input.item = false; }
       else if (r.human) {
         const s = this.inputs.read(r.dev);
-        Object.assign(r.input, { steer: s.steer, gas: s.gas, brake: s.brake, drift: s.drift, item: s.item, back: s.back });
+        Object.assign(r.input, { steer: -s.steer, gas: s.gas, brake: s.brake, drift: s.drift, item: s.item, back: s.back });
       } else driveAI(r, this, dt);
     }
     for (const r of this.racers) r.step(dt, this);

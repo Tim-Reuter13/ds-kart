@@ -137,7 +137,7 @@ export class Racer {
     let yaw = steer * turnBase * turnScale * (this.speed < 0 ? -1 : 1);
 
     if (driftEdge && !this.air && control) {
-      this.vy = 3.0; this.y += 0.05; this.air = true; this.airT = 0; this.hop = true;
+      this.vy = 2.4; this.y += 0.04; this.air = true; this.airT = 0; this.hop = true;
     }
     if (this.drift) {
       if (!inp.drift || sp < 7 || !control) {

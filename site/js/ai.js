@@ -52,8 +52,10 @@ export function driveAI(r, race, dt) {
   inp.brake = Math.abs(diff) > 1.3 && sp > 8;
 
   // Driften in laengeren Kurven
-  if (!r.drift && !r.air && Math.abs(c) > 0.028 && sp > 14 && a.hold <= 0 && Math.random() < 0.5 * a.skill) {
-    inp.drift = true; a.hold = 0.1; a.dir = Math.sign(c);
+  a.cool = (a.cool || 0) - dt;
+  if (!r.drift && !r.air && Math.abs(c) > 0.028 && sp > 14 && a.hold <= 0 && a.cool <= 0) {
+    a.cool = 2.5; inp.drift = false;
+    if (Math.random() < 0.65 * a.skill) { inp.drift = true; a.hold = 0.45; a.dir = Math.sign(c); }
   } else if (r.drift) {
     const keep = Math.abs(c) > 0.012 && Math.sign(c) === r.drift.dir && r.driftLevel < 3;
     inp.drift = keep || r.driftLevel === 0 && Math.abs(c) > 0.008;
