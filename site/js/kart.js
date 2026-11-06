@@ -183,9 +183,10 @@ export class Racer {
         const th = Math.atan2(track.tx[q.i], track.tz[q.i]);
         const rel = wrapAngle(this.heading - th);
         if (Math.abs(rel) > 0.25 && Math.abs(rel) < Math.PI - 0.25) {
+          const impact = Math.abs(this.speed) * Math.abs(Math.sin(rel));
           this.speed *= 0.6;
           this.heading = wrapAngle(th + (Math.abs(rel) < Math.PI / 2 ? 0.15 * -sgn : Math.PI + 0.15 * sgn));
-          if (this.bump <= 0) { this.events.push({ t: "wall" }); this.bump = 0.4; }
+          if (this.bump <= 0) { this.events.push({ t: impact > 9 ? "crash" : "wall", impact }); this.bump = 0.4; }
         } else this.speed *= 1 - 0.8 * dt;
         q = track.locate(this.x, this.z, this.hint);
       }
@@ -208,6 +209,7 @@ export class Racer {
       if (driftEdge && !this.hop && this.airT < 0.6 && !this.trick && control) { this.trick = true; this.events.push({ t: "trick" }); }
       if (this.y <= g.h) {
         this.y = g.h; this.air = false; this.squash = 0.25;
+        if (this.airT > 0.32) this.events.push({ t: "land", air: this.airT });
         if (this.trick) { this.boost(0.7); this.trick = false; }
         if (this.hop) {
           this.hop = false;

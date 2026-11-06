@@ -142,9 +142,39 @@ function buildingGeoms(b, groundAt) {
   const area = Math.abs(polyArea(poly));
   if (area < 6) return null;
   let base = 1e9, top = -1e9;
-  for (const [x, z] of poly) { const h = groundAt(x, z); base = Math.min(base, h); top = Math.max(top, h); }
+  const gs = [];
+  for (const [x, z] of poly) { const h = groundAt(x, z); gs.push(h); base = Math.min(base, h); top = Math.max(top, h); }
+  { const [mx, mz] = centroid(poly); gs.push(groundAt(mx, mz)); gs.sort((a, c) => a - c); top = b.low ? base + 0.3 : Math.min(top, gs[gs.length >> 1] + 1.0); }
   const hgt = Math.max(3, b.h);
-  const big = area > 420 || ["industrial", "retail", "commercial", "supermarket", "school", "garage", "garages", "warehouse", "car", "sports_hall", "doityourself", "fast_food", "fuel"].includes(b.k);
+  // Ueberdachung (Tankstellendach, Carport): Dach auf Stuetzen statt Klotz
+  if (b.k === "roof" || b.k === "carport") {
+    const yb = top + Math.min(hgt, b.k === "carport" ? 2.6 : 5.0), band = b.k === "carport" ? 0.35 : 0.9, ya = yb - band;
+    const pos = [], uv = [], idx = [];
+    let per = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], c = poly[(i + 1) % poly.length], L = Math.hypot(c[0] - a[0], c[1] - a[1]), k = pos.length / 3;
+      pos.push(a[0], ya, a[1], c[0], ya, c[1], c[0], yb, c[1], a[0], yb, a[1]);
+      uv.push(per / (band * 6), 0, (per + L) / (band * 6), 0, (per + L) / (band * 6), 1, per / (band * 6), 1);
+      idx.push(k, k + 2, k + 1, k, k + 3, k + 2);
+      per += L;
+    }
+    const walls = new THREE.BufferGeometry();
+    walls.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    walls.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    walls.setIndex(idx); walls.computeVertexNormals();
+    const topF = flatPoly(poly, yb), bot = flatPoly(poly, ya);
+    const bi = bot.index.array; for (let i = 0; i < bi.length; i += 3) { const t = bi[i]; bi[i] = bi[i + 1]; bi[i + 1] = t; }
+    const bn = bot.attributes.normal; for (let i = 0; i < bn.count; i++) bn.setY(i, -bn.getY(i));
+    const roof = mergeGeometries([topF, bot], false);
+    const [cx, cz] = centroid(poly);
+    const posts = [];
+    for (const [x, z] of poly) {
+      const dx = cx - x, dz = cz - z, l = Math.hypot(dx, dz) || 1, px = x + dx / l * 0.5, pz = z + dz / l * 0.5, g0 = groundAt(px, pz);
+      const p = new THREE.BoxGeometry(0.32, ya - g0 + 0.3, 0.32); p.translate(px, (ya + g0 - 0.3) / 2, pz); posts.push(p);
+    }
+    return { walls, roof, gables: null, chimney: mergeGeometries(posts, false), big: true, canopy: true, h: yb - base, base, top: yb, poly, cx, cz, area, ri: null, pitched: false };
+  }
+  const big = b.flat || !b.gable && (area > 420 || ["industrial", "retail", "commercial", "supermarket", "school", "garage", "garages", "warehouse", "car", "sports_hall", "doityourself", "fast_food", "fuel"].includes(b.k));
   const y0 = base - 1.5, y1 = top + hgt;
   const pos = [], uv = [], idx = [];
   let per = 0;
@@ -163,7 +193,7 @@ function buildingGeoms(b, groundAt) {
   walls.setIndex(idx); walls.computeVertexNormals();
 
   const [cx, cz] = centroid(poly);
-  let roof = null, gables = null, chimney = null;
+  let roof = null, gables = null, chimney = null, rinfo = null;
   const R = orientedRect(poly);
   if (big || !R) {
     roof = flatPoly(poly, y1);
@@ -177,30 +207,37 @@ function buildingGeoms(b, groundAt) {
     const ov = 0.45;
     u0 -= ov; u1 += ov; v0 -= ov; v1 += ov;
     const half = (v1 - v0) / 2, vm = (v0 + v1) / 2;
-    const pitch = rnd(0.75, 1.0);
+    const pitch = b.pitch || rnd(0.75, 1.0);
     const rh = Math.min(half * pitch, 6.5);
     const P = (u, v, y) => [u * ux + v * vx, y, u * uz + v * vz];
     const ye = y1 - 0.25;
+    const hip = !b.gable && (u1 - u0) > (v1 - v0) * 1.2 && Math.random() < 0.3;
+    const hi = hip ? Math.min(half * 0.85, (u1 - u0) * 0.35) : 0;
     const A = P(u0, v0, ye), B = P(u1, v0, ye), C = P(u1, v1, ye), D = P(u0, v1, ye);
-    const E = P(u0, vm, y1 + rh), F = P(u1, vm, y1 + rh);
+    const E = P(u0 + hi, vm, y1 + rh), F = P(u1 - hi, vm, y1 + rh);
     const rp = [...A, ...B, ...F, ...E, ...C, ...D, ...E, ...F];
     const slopeL = Math.hypot(half, rh);
     const lu = (u1 - u0) / 2;
     const ruv = [0, 0, lu, 0, lu, slopeL / 2, 0, slopeL / 2, 0, 0, lu, 0, lu, slopeL / 2, 0, slopeL / 2];
+    const ri = [0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6];
+    if (hip) { rp.push(...D, ...A, ...E, ...B, ...C, ...F); ruv.push(0, 0, half, 0, half / 2, slopeL / 2, 0, 0, half, 0, half / 2, slopeL / 2); ri.push(8, 10, 9, 11, 13, 12); }
     roof = new THREE.BufferGeometry();
     roof.setAttribute("position", new THREE.Float32BufferAttribute(rp, 3));
     roof.setAttribute("uv", new THREE.Float32BufferAttribute(ruv, 2));
-    roof.setIndex([0, 2, 1, 0, 3, 2, 4, 6, 5, 4, 7, 6]);
+    roof.setIndex(ri);
     roof.computeVertexNormals();
+    rinfo = { ux, uz, vx, vz, u0, u1, v0, v1, vm, half, rh, y1, hip };
     // Giebeldreiecke (in Wandfarbe) - leicht nach innen, damit kein Ueberstand sichtbar wird
     const gi = ov + 0.02;
     const G0a = P(u0 + gi, v0 + gi, y1), G0b = P(u0 + gi, v1 - gi, y1), G0c = P(u0 + gi, vm, y1 + rh * ((half - gi) / half));
     const G1a = P(u1 - gi, v1 - gi, y1), G1b = P(u1 - gi, v0 + gi, y1), G1c = P(u1 - gi, vm, y1 + rh * ((half - gi) / half));
-    gables = new THREE.BufferGeometry();
-    gables.setAttribute("position", new THREE.Float32BufferAttribute([...G0a, ...G0b, ...G0c, ...G1a, ...G1b, ...G1c], 3));
-    gables.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0.5, 0.5, 0, 0, 1, 0, 0.5, 0.5], 2));
-    gables.setIndex([0, 2, 1, 3, 5, 4]);
-    gables.computeVertexNormals();
+    if (!hip) gables = new THREE.BufferGeometry();
+    if (gables) {
+      gables.setAttribute("position", new THREE.Float32BufferAttribute([...G0a, ...G0b, ...G0c, ...G1a, ...G1b, ...G1c], 3));
+      gables.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0.5, 0.5, 0, 0, 1, 0, 0.5, 0.5], 2));
+      gables.setIndex([0, 2, 1, 3, 5, 4]);
+      gables.computeVertexNormals();
+    }
     // ehrlich gesagt: Giebel auch von innen zeichnen ist nicht noetig
     if (Math.random() < 0.45) {
       const cu = u0 + (u1 - u0) * rnd(0.25, 0.75), cv = vm + half * 0.45 * (Math.random() < 0.5 ? -1 : 1);
@@ -209,7 +246,7 @@ function buildingGeoms(b, groundAt) {
       chimney.translate(x, y1 + rh * 0.55 + 0.4, z);
     }
   }
-  return { walls, roof, gables, chimney, big, h: hgt, base, top: y1, poly, cx, cz };
+  return { walls, roof, gables, chimney, big, h: hgt, base, top: y1, poly, cx, cz, area, ri: rinfo, pitched: !!rinfo };
 }
 
 // Senkrechte Wand entlang einer Linie mit seitlichem Versatz (Hoehen pro Punkt)
@@ -509,13 +546,146 @@ export function buildWorld(scene, track, data, extra, quality) {
 
   // ---------- Gebaeude
   const blds = [];
-  const geo = { plain: [], shut: [], office: [], roof: [], flat: [], gable: [], chim: [] };
+  const geo = { plain: [], shut: [], office: [], bare: [], roof: [], flat: [], gable: [], chim: [] };
   const bGrid = new Map();
   const shutterCol = pick(["#3f6e3a", "#7a4a2a", "#3a5a7a"]);
+  const FAC = extra.facades || {};
+  // Details (Gauben, Tueren, Vordaecher, Balkone, Sockel, Attika, Dachtechnik) - als gemergte Boxen
+  const det = [], glass = [];
+  const DB = (w, h, d, col, o = {}) => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    if (o.rz) g.rotateZ(o.rz);
+    if (o.l) g.translate(o.l[0], o.l[1], o.l[2]);
+    if (o.ry) g.rotateY(o.ry);
+    g.translate(o.x || 0, o.y || 0, o.z || 0);
+    g.deleteAttribute("uv");
+    colorize(g, col); (o.glass ? glass : det).push(g);
+  };
+  const tpx = [], tpz = [];
+  for (let i = 0; i < track.n; i += 2) { tpx.push(track.px[i]); tpz.push(track.pz[i]); }
+  const nearTP = (x, z) => { let bd = 1e18, bi = 0; for (let i = 0; i < tpx.length; i++) { const dx = tpx[i] - x, dz = tpz[i] - z, d = dx * dx + dz * dz; if (d < bd) { bd = d; bi = i; } } return { x: tpx[bi], z: tpz[bi], dist: Math.sqrt(bd) }; };
+  const detDist = 55 + 60 * ((quality && quality.extras) || 1);
+  const DOORS = ["#5a3a22", "#3d4a5a", "#6b4a2e", "#7d2f25", "#2f4a3a", "#8a8f96"];
+  const RAILS = ["#6b4a2e", "#e8e8e6", "#3a3d42", "#5a3a22"];
+  const edgesOf = (r, tp) => {
+    const out = [], P = r.poly;
+    for (let i = 0; i < P.length; i++) {
+      const a = P[i], c = P[(i + 1) % P.length];
+      const dx = c[0] - a[0], dz = c[1] - a[1], L = Math.hypot(dx, dz);
+      if (L < 1.2) continue;
+      let nx = dz / L, nz = -dx / L;
+      const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2;
+      if ((mx + nx - r.cx) * nx + (mz + nz - r.cz) * nz < 0) { nx = -nx; nz = -nz; }
+      const tx = tp.x - mx, tz = tp.z - mz, tl = Math.hypot(tx, tz) || 1;
+      out.push({ a, c, L, mx, mz, nx, nz, ry: Math.atan2(nx, nz), face: (nx * tx + nz * tz) / tl });
+    }
+    return out;
+  };
+  const onEdge = (e, t) => [e.a[0] + (e.c[0] - e.a[0]) * t, e.a[1] + (e.c[1] - e.a[1]) * t];
+  function houseDetails(r, wc, rc, tp, near) {
+    const ex = edgesOf(r, tp);
+    // Sockel
+    if (near) {
+      const pc = pick(["#9a958c", "#8c8a86", "#a39d92", "#7f7b74"]);
+      for (const e of ex) {
+        const ga = H(e.a[0], e.a[1]), gc = H(e.c[0], e.c[1]);
+        const lo = Math.min(ga, gc) - 0.4, hi = Math.max(ga, gc) + 0.5;
+        if (hi - lo > 3) continue;
+        DB(e.L + 0.16, hi - lo, 0.1, pc, { x: e.mx + e.nx * 0.05, y: (lo + hi) / 2, z: e.mz + e.nz * 0.05, ry: e.ry });
+      }
+    }
+    // Haustuer mit Rahmen, Stufe und Vordach auf der Seite zur Strecke
+    const fr = ex.filter(e => e.L >= 3.5).sort((p, q) => q.face - p.face);
+    let doorT = 0.5;
+    if (fr.length) {
+      const e = fr[0]; doorT = rnd(0.3, 0.7);
+      const [px, pz] = onEdge(e, doorT), gy = H(px, pz), o = (d) => ({ x: px + e.nx * d, z: pz + e.nz * d, ry: e.ry });
+      DB(1.32, 2.36, 0.08, "#efece5", { ...o(0.05), y: gy + 1.18 });
+      DB(1.06, 2.16, 0.1, pick(DOORS), { ...o(0.06), y: gy + 1.08 });
+      DB(0.25, 0.25, 0.04, "#e9e4b0", { ...o(0.1), y: gy + 2.55, l: [0.9, 0, 0] });
+      DB(1.7, 0.2, 0.75, "#b8b3aa", { ...o(0.38), y: gy + 0.06 });
+      if (Math.random() < 0.8) DB(2.1, 0.12, 1.15, pick(["#e9e6df", "#5b5f66", rc, "#7a5236"]), { ...o(0.58), y: gy + 2.68 });
+    }
+    // Balkon
+    const room = r.top - H(r.cx, r.cz);
+    if (room > 5.3 && Math.random() < 0.42) {
+      const e = fr.find((q, i) => i > 0 && q.L >= 4) || (fr[0] && fr[0].L >= 8 ? fr[0] : null);
+      if (e) {
+        const t = e === fr[0] ? (doorT < 0.5 ? 0.76 : 0.24) : rnd(0.35, 0.65);
+        const [px, pz] = onEdge(e, t), gy = H(px, pz), bw = Math.min(3.4, e.L * 0.45), rc2 = pick(RAILS);
+        const o = { x: px, z: pz, ry: e.ry }, fy = gy + 2.95;
+        if (r.top - gy > 5.4) {
+          DB(bw, 0.16, 1.25, "#d9d6cf", { ...o, y: fy, l: [0, 0, 0.62] });
+          DB(bw, 0.95, 0.06, rc2, { ...o, y: fy + 0.55, l: [0, 0, 1.22] });
+          DB(0.06, 0.95, 1.2, rc2, { ...o, y: fy + 0.55, l: [-bw / 2 + 0.03, 0, 0.62] });
+          DB(0.06, 0.95, 1.2, rc2, { ...o, y: fy + 0.55, l: [bw / 2 - 0.03, 0, 0.62] });
+          DB(1.0, 2.1, 0.08, "#26303a", { ...o, y: fy + 1.13, l: [0, 0, 0.05], glass: true });
+        }
+      }
+    }
+    // Dachgauben
+    const R = r.ri;
+    if (R && R.rh > 2.8 && R.u1 - R.u0 > 8 && Math.random() < 0.55) {
+      const n = R.u1 - R.u0 > 13 ? 2 : 1, sides = Math.random() < 0.5 ? [1] : [1, -1];
+      const dd = Math.min(2.2, R.half * 0.5), hd = 1.45;
+      for (const sd of sides) for (let k = 0; k < n; k++) {
+        const u = R.u0 + (R.u1 - R.u0) * (k + 1) / (n + 1), vF = R.vm + sd * R.half * 0.55;
+        const yF = R.y1 + R.rh - (R.rh + 0.25) * 0.55, y0 = yF - 0.15;
+        const o = { x: u * R.ux + vF * R.vx, z: u * R.uz + vF * R.vz, ry: Math.atan2(sd * R.vx, sd * R.vz) };
+        DB(1.9, hd, dd, wc, { ...o, y: y0 + hd / 2, l: [0, 0, -dd / 2] });
+        DB(1.25, 0.1, dd + 0.35, rc, { ...o, y: y0 + hd + 0.3, l: [-0.5, 0, -dd / 2 + 0.17], rz: 0.55 });
+        DB(1.25, 0.1, dd + 0.35, rc, { ...o, y: y0 + hd + 0.3, l: [0.5, 0, -dd / 2 + 0.17], rz: -0.55 });
+        DB(1.1, 0.34, 0.1, wc, { ...o, y: y0 + hd + 0.12, l: [0, 0, -0.05] });
+        DB(1.15, 0.95, 0.06, "#f2efe8", { ...o, y: y0 + hd * 0.5 + 0.05, l: [0, 0, 0.02] });
+        DB(0.95, 0.75, 0.07, "#26303a", { ...o, y: y0 + hd * 0.5 + 0.05, l: [0, 0, 0.03], glass: true });
+      }
+    }
+  }
+  function bigDetails(r, wc, tp, withEntrance) {
+    const ex = edgesOf(r, tp);
+    // Attika (Brüstung am Flachdach)
+    const ac = "#" + new THREE.Color(wc).multiplyScalar(0.84).getHexString();
+    for (const e of ex) DB(e.L + 0.3, 0.7, 0.3, ac, { x: e.mx - e.nx * 0.15, y: r.top + 0.35, z: e.mz - e.nz * 0.15, ry: e.ry });
+    // Dachtechnik
+    const n = Math.min(5, 1 + Math.floor(r.area / 300));
+    const ang = r.ri ? 0 : Math.atan2(ex[0]?.nx || 0, ex[0]?.nz || 1);
+    for (let k = 0, tries = 0; k < n && tries < 40; tries++) {
+      const x = r.cx + rnd(-1, 1) * Math.sqrt(r.area) * 0.4, z = r.cz + rnd(-1, 1) * Math.sqrt(r.area) * 0.4;
+      if (![[0, 0], [2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]].every(([a, c]) => inPoly(x + a, z + c, r.poly))) continue;
+      const h = rnd(0.8, 1.6);
+      DB(rnd(1.4, 3.2), h, rnd(1.2, 2.4), pick(["#b9bcc0", "#a7aaad", "#c9cbcd", "#9da1a5"]), { x, y: r.top + h / 2, z, ry: ang });
+      if (Math.random() < 0.5) DB(0.5, 0.9, 0.5, "#8d9196", { x: x + 1.8, y: r.top + 0.45, z, ry: ang });
+      k++;
+    }
+    // Eingang mit Glastuer und Vordach
+    if (!withEntrance) return;
+    const e = ex.filter(q => q.L >= 7).sort((p, q) => q.face - p.face)[0];
+    if (!e) return;
+    const [px, pz] = onEdge(e, rnd(0.3, 0.7)), gy = H(px, pz), o = { x: px, z: pz, ry: e.ry };
+    const cw = Math.min(e.L * 0.5, 7.5);
+    DB(2.9, 2.75, 0.08, "#c8cacc", { ...o, y: gy + 1.37, l: [0, 0, 0.04] });
+    DB(2.5, 2.5, 0.1, "#2a3540", { ...o, y: gy + 1.25, l: [0, 0, 0.06], glass: true });
+    DB(cw, 0.28, 2.3, "#d6d7d9", { ...o, y: gy + 3.25, l: [0, 0, 1.15] });
+    DB(0.16, 3.2, 0.16, "#9a9ea3", { ...o, y: gy + 1.6, l: [-cw / 2 + 0.25, 0, 2.1] });
+    DB(0.16, 3.2, 0.16, "#9a9ea3", { ...o, y: gy + 1.6, l: [cw / 2 - 0.25, 0, 2.1] });
+  }
   for (const b of data.buildings) {
     const r = buildingGeoms(b, H);
     if (!r) continue;
     const special = extra.buildingStyle && extra.buildingStyle(b);
+    if (r.canopy) {
+      colorize(r.roof, "#eeeeec"); colorize(r.chimney, "#d9dadb");
+      geo.flat.push(r.roof); geo.chim.push(r.chimney);
+      if (b.fuel) {
+        const t = new THREE.TextureLoader().load("img/facades/tanke_dach.webp"); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 8;
+        const m = new THREE.Mesh(r.walls, new THREE.MeshLambertMaterial({ map: t })); m.castShadow = true; group.add(m);
+        const lights = [];
+        for (let k = 0; k < 6; k++) { const x = r.cx + rnd(-1, 1) * Math.sqrt(r.area) * 0.3, z = r.cz + rnd(-1, 1) * Math.sqrt(r.area) * 0.3; if (inPoly(x, z, r.poly)) { const g = new THREE.BoxGeometry(1.6, 0.06, 0.5); g.translate(x, r.top - 0.93, z); lights.push(g); } }
+        if (lights.length) group.add(new THREE.Mesh(mergeGeometries(lights, false), new THREE.MeshBasicMaterial({ color: "#fffbe8" })));
+      } else { colorize(r.walls, "#e9e9e6"); geo.bare.push(r.walls); }
+      blds.push({ ...r, b });
+      continue;
+    }
     const wc = special?.wall || (r.big ? pick(BIZWALL) : pick(WALLS));
     const rc = special?.roof || (r.big ? pick(["#7e7f7c", "#8c8c88", "#6f716f", "#9a9a95"]) : pick(ROOFS));
     colorize(r.walls, wc); colorize(r.roof, rc);
@@ -523,8 +693,13 @@ export function buildWorld(scene, track, data, extra, quality) {
       for (let i = 0; i < pa.count; i++) if (pa.getY(i) < r.base) ca.setXYZ(i, ca.getX(i) * 0.58, ca.getY(i) * 0.58, ca.getZ(i) * 0.6); }
     if (r.gables) colorize(r.gables, wc);
     if (r.chimney) colorize(r.chimney, "#8a5a44");
-    (r.big ? geo.office : Math.random() < 0.35 ? geo.shut : geo.plain).push(r.walls);
-    (r.gables ? geo.roof : geo.flat).push(r.roof);
+    (special?.bare ? geo.bare : r.big ? geo.office : Math.random() < 0.35 ? geo.shut : geo.plain).push(r.walls);
+    (r.pitched ? geo.roof : geo.flat).push(r.roof);
+    const tp = nearTP(r.cx, r.cz);
+    if (tp.dist < detDist && !b.gable && b.n !== "shelter") {
+      if (r.big) bigDetails(r, wc, tp, !FAC[b.n]);
+      else if (!FAC[b.n]) houseDetails(r, wc, rc, tp, tp.dist < detDist * 0.7);
+    }
     if (r.gables) geo.gable.push(r.gables);
     if (r.chimney) geo.chim.push(r.chimney);
     blds.push({ ...r, b });
@@ -536,16 +711,61 @@ export function buildWorld(scene, track, data, extra, quality) {
   addMerged(geo.plain, wallMat(facadeTex(null), "house"), { cast: true });
   addMerged(geo.shut, wallMat(facadeTex(shutterCol), "house"), { cast: true });
   addMerged(geo.office, wallMat(officeTex(), "office"), { cast: true });
+  addMerged(geo.bare, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 }), { cast: true });
   addMerged(geo.gable, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), { cast: true });
   addMerged(geo.roof, new THREE.MeshStandardMaterial({ vertexColors: true, map: tileTex(), side: THREE.DoubleSide, roughness: 0.72, metalness: 0 }), { cast: true });
   addMerged(geo.flat, new THREE.MeshLambertMaterial({ vertexColors: true }), { cast: true });
   addMerged(geo.chim, new THREE.MeshLambertMaterial({ vertexColors: true }), { cast: true });
   const inBuilding = (x, z) => { const arr = bGrid.get(Math.floor(x / 20) + "," + Math.floor(z / 20)); return arr ? arr.some(p => inPoly(x, z, p)) : false; };
 
+  // Fassaden-Bilder (echte Gebaeude) auf die Wand, die zur Strecke zeigt
+  const loader = new THREE.TextureLoader();
+  for (const bl of blds) {
+    const f = FAC[bl.b.n];
+    if (!f) continue;
+    const edges = [];
+    for (let i = 0; i < bl.poly.length; i++) {
+      const a = bl.poly[i], c = bl.poly[(i + 1) % bl.poly.length];
+      const mx = (a[0] + c[0]) / 2, mz = (a[1] + c[1]) / 2, L = Math.hypot(c[0] - a[0], c[1] - a[1]);
+      if (L < 3) continue;
+      edges.push({ a, c, mx, mz, L, score: track.nearestAll(mx, mz).dist - L * 0.35 });
+    }
+    edges.sort((p, q) => p.score - q.score);
+    const use = f.sides === "long" ? edges.filter(e => e.L > 6).sort((p, q) => q.L - p.L).slice(0, 2) : edges.slice(0, f.walls || 1);
+    for (const e of use) {
+      let nx = e.c[1] - e.a[1], nz = -(e.c[0] - e.a[0]); const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
+      if ((e.mx + nx - bl.cx) * nx + (e.mz + nz - bl.cz) * nz < 0) { nx = -nx; nz = -nz; }
+      const gy = H(e.mx, e.mz), hh = (f.height ? Math.min(f.height, bl.top - gy - 0.05) : bl.top - gy - 0.05), w = e.L * 0.97, ry = Math.atan2(nx, nz);
+      if (!bl.b.gable && hh < bl.top - gy - 0.4) DB(w + 0.2, 0.3, 0.34, f.trim || "#d9d7d1", { x: e.mx + nx * 0.13, y: gy + hh + 0.15, z: e.mz + nz * 0.13, ry });
+      if (f.ledge) { const d = f.ledgeD || 0.9; DB(w * (f.ledgeW || 1), 0.22, d, f.ledgeCol || "#55585e", { x: e.mx + nx * (d / 2 + 0.05), y: gy + hh * f.ledge, z: e.mz + nz * (d / 2 + 0.05), ry }); }
+    }
+    loader.load(f.file, (t) => {
+      t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.wrapS = THREE.RepeatWrapping;
+      const asp = t.image.width / t.image.height;
+      for (const e of use) {
+        let dx = e.c[0] - e.a[0], dz = e.c[1] - e.a[1];
+        let nx = dz, nz = -dx; const nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
+        if ((e.mx + nx - bl.cx) * nx + (e.mz + nz - bl.cz) * nz < 0) { nx = -nx; nz = -nz; }
+        const gy = H(e.mx, e.mz);
+        const hh = (f.height ? Math.min(f.height, bl.top - gy - 0.05) : bl.top - gy - 0.05);
+        const w = f.single ? Math.min(e.L * 0.97, hh * asp) : e.L * 0.97, rep = f.single ? 1 : Math.max(1, Math.round(w / (hh * asp)));
+        const tex = t.clone(); tex.needsUpdate = true; tex.repeat.set(rep, 1);
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, metalness: 0, envMapIntensity: 0.8 }));
+        m.position.set(e.mx + nx * 0.05, gy + hh / 2, e.mz + nz * 0.05);
+        m.rotation.y = Math.atan2(nx, nz);
+        m.receiveShadow = true;
+        group.add(m);
+      }
+    }, undefined, () => {});
+  }
+
+  addMerged(det, new THREE.MeshLambertMaterial({ vertexColors: true }), { cast: true });
+  addMerged(glass, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.12, metalness: 0.5, envMapIntensity: 1.4 }), { cast: false });
+
   // Schilder an benannten Gebaeuden
   for (const bl of blds) {
     const b = bl.b;
-    if (!b.n || b.n === "shelter") continue;
+    if (!b.n || b.n === "shelter" || FAC[b.n]) continue;
     const text = RENAME[b.n] || b.n;
     const [bg, fg] = SIGNCOL[b.k] || ["#2b4a7a", "#ffffff"];
     let best = null;

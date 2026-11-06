@@ -1,5 +1,5 @@
 // Standard-Sounds synthetisch per WebAudio; eigene Aufnahmen (Audio-Profil) ersetzen sie
-const VOICE_PITCH = { tim: 128, sonja: 235, jannik: 118, franzi: 225, toni: 98, rudi: 108, kevin: 150, paula: 210 };
+const VOICE_PITCH = { tim: 128, sonja: 235, jannik: 118, franzi: 225, toni: 98, giovanni: 140, kevin: 150, paula: 210 };
 const VOWEL = { a: [800, 1250], e: [480, 1900], i: [300, 2300], o: [500, 880], u: [340, 780], ue: [300, 1600] };
 const LINES = {
   start: [["o", 0.13, 1.0, 1.1], ["e", 0.2, 1.2, 1.3]],
@@ -169,6 +169,9 @@ export class Audio {
       case "spark": this.tone(1800, 0.05, { type: "square", vol: 0.08 }); break;
       case "hit": this.tone(160, 0.35, { type: "sawtooth", slide: 0.3, vol: 0.3 }); this.noise(0.3, { f0: 500, f1: 100, vol: 0.4 }); break;
       case "wall": this.noise(0.15, { f0: 300, f1: 80, vol: 0.4, type: "lowpass" }); break;
+      case "crash": this.noise(0.45, { f0: 1800, f1: 90, vol: 0.7, type: "lowpass" }); this.tone(95, 0.3, { type: "sine", vol: 0.5, slide: 0.5 }); [1400, 1900, 2600].forEach((f, i) => this.tone(f, 0.12, { type: "square", vol: 0.06, at: 0.02 + i * 0.03, slide: 0.7 })); this.noise(0.25, { at: 0.05, f0: 5000, f1: 2500, vol: 0.18, type: "highpass" }); break;
+      case "bump": this.tone(140, 0.12, { type: "sine", vol: 0.45, slide: 0.6 }); this.noise(0.1, { f0: 900, f1: 300, vol: 0.3, q: 1.5 }); this.tone(520, 0.05, { type: "triangle", vol: 0.12 }); break;
+      case "land": this.tone(75, 0.22, { type: "sine", vol: 0.55, slide: 0.55 }); this.noise(0.2, { f0: 600, f1: 120, vol: 0.35, type: "lowpass" }); this.tone(260, 0.06, { type: "triangle", vol: 0.1, at: 0.03 }); break;
       case "throw": this.noise(0.25, { f0: 2000, f1: 600, vol: 0.2, q: 3 }); break;
       case "drop": this.tone(120, 0.15, { type: "triangle", vol: 0.3 }); break;
       case "pfand": this.tone(1568, 0.08, { type: "triangle", vol: 0.2 }); this.tone(2093, 0.15, { type: "triangle", vol: 0.2, at: 0.06 }); break;

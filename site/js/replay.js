@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { ITEMS } from "./items.js";
 
-const STATES = ["fahren", "schaden", "werfen", "vape"];
+const STATES = ["fahren", "schaden", "werfen", "vape", "fauchen"];
 const FPS = 30, CLIP = 7;
 
 export class Recorder {

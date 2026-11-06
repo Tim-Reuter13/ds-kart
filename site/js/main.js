@@ -11,6 +11,7 @@ import { RoomEnvironment } from "../vendor/RoomEnvironment.js";
 import { initAudioUI } from "./audioui.js";
 import { Pipeline, QUALITY } from "./render.js";
 import { loadSpriteSet, SPRITE_DRIVERS } from "./sprites.js";
+import { FAMILY, setFamily } from "./family.js";
 
 const $ = (s) => document.querySelector(s);
 const renderer = new THREE.WebGLRenderer({ canvas: $("#gl"), antialias: true, powerPreference: "high-performance" });
@@ -22,6 +23,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const pmrem = new THREE.PMREMGenerator(renderer);
 window.__env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+renderer.setSize(innerWidth, innerHeight, false); // vor der Pipeline, sonst baut Bloom mit 300x150 (rechte Splitscreen-Haelfte weiss)
 const pipeline = new Pipeline(renderer);
 window.__pipeline = pipeline;
 const hudCanvas = $("#hud");
@@ -149,6 +151,20 @@ $("#qBtns").addEventListener("click", e => { const c = e.target.closest("[data-q
 $("#go").onclick = () => startRace();
 $("#toSetup").onclick = () => toSetup();
 $("#toAudio").onclick = () => audioUI.open("lobby");
+// ---------------- Einstellungen
+const vol = (() => { try { return JSON.parse(localStorage.getItem("dskart_vol")) || { mus: 70, sfx: 80 }; } catch (e) { return { mus: 70, sfx: 80 }; } })();
+function applyVol() { audio.ensure(); if (audio.musicBus) { audio.musicBus.gain.value = 0.32 * vol.mus / 100; audio.sfxBus.gain.value = 0.75 * vol.sfx / 100; } }
+function renderSettings() {
+  $("#sQ").innerHTML = Object.keys(QUALITY).map(k => `<button class="btn ${pipeline.level === k ? "sel" : ""}" data-q="${k}">${QUALITY[k].name}</button>`).join("");
+  $("#sMus").value = vol.mus; $("#sSfx").value = vol.sfx;
+  $("#sTest").textContent = FAMILY ? "Test ✓" : "Test";
+}
+$("#toSettings").onclick = () => { renderSettings(); show("settings"); };
+$("#sBack").onclick = () => { show("lobby"); renderLobby(); };
+$("#sQ").addEventListener("click", e => { const c = e.target.closest("[data-q]"); if (c) { pipeline.setLevel(c.dataset.q); renderSettings(); } });
+for (const [id, k] of [["#sMus", "mus"], ["#sSfx", "sfx"]]) $(id).addEventListener("input", e => { vol[k] = +e.target.value; try { localStorage.setItem("dskart_vol", JSON.stringify(vol)); } catch (x) {} applyVol(); audio.sfx(k === "sfx" ? "pfand" : "select"); });
+$("#sTest").onclick = () => setFamily(!FAMILY);
+addEventListener("pointerdown", () => applyVol(), { once: true });
 
 function toSetup() {
   if (!state.players.length) { addPlayer("kb1"); state.players[0].ready = true; }
@@ -200,7 +216,7 @@ function showResults(res) {
     RES_BTNS = last ? [["Siegerehrung 🏆", () => podium()]] : [["Nächstes Rennen ▶", () => { gp.i++; startRace(); }], ["Grand Prix abbrechen", () => { state.gp = null; show("setup"); renderSetup(); }]];
   } else {
     $("#resTitle").textContent = best ? (best.place === 1 ? `🏆 ${best.name} gewinnt!` : `${best.name}: ${best.place}. Platz`) : "Ergebnis";
-    $("#resTable").innerHTML = res.map(r => `<tr class="${r.human ? "me" : ""}"><td class="pl">${r.place}.</td><td>${avatar(r.driver, r.color)}${r.name}</td><td class="small">${r.car}</td><td>${fmt(r.time)}</td><td class="small">🍾 ${(r.pfand * 0.25).toFixed(2).replace(".", ",")} €</td></tr>`).join("");
+    $("#resTable").innerHTML = res.map(r => `<tr class="${r.human ? "me" : ""}"><td class="pl">${r.place}.</td><td>${avatar(r.driver, r.color)}${r.name}</td><td class="small">${r.car}</td><td>${fmt(r.time)}</td><td class="small">${FAMILY ? "♻️" : "🍾"} ${(r.pfand * 0.25).toFixed(2).replace(".", ",")} €</td></tr>`).join("");
     RES_BTNS = SINGLE_BTNS;
   }
   state.focus = { row: 0, col: 0 };
@@ -275,6 +291,8 @@ function menuInput() {
       if (e.ok || e.start) { if (f.row === 4 || e.start) { startRace(); return; } f.row++; f.col = 0; audio.sfx("confirm"); }
       if (e.cancel) { for (const p of state.players) if (!p.dev.startsWith("ph")) p.ready = false; show("lobby"); renderLobby(); return; }
       renderSetup();
+    } else if (state.screen === "settings") {
+      if (e.cancel) { $("#sBack").click(); return; }
     } else if (state.screen === "audio") {
       if (e.cancel && !audioUI.isRecording()) { $("#aBack").click(); return; }
     } else if (state.screen === "race" && state.race && state.race.replay) {
@@ -341,6 +359,7 @@ if (qs.has("at")) {
 // Titelbild: echtes Logo, falls vorhanden (sonst Text-Logo)
 {
   const img = document.querySelector("#logoImg");
+  if (FAMILY) img.removeAttribute("src");
   const ok = () => { document.querySelector("#s-title").classList.add("hasLogo"); document.querySelector(".logoWrap").style.setProperty("--logo-mask", `url(${img.src}) center/contain no-repeat`); };
   if (img.complete && img.naturalWidth) ok(); else img.addEventListener("load", ok);
 }

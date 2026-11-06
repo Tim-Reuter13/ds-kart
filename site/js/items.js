@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { T } from "./tex.js";
+import { FAMILY, FAMILY_ITEMS } from "./family.js";
 
 export const ITEMS = {
   vape:    { icon: "💨", name: "Vape" },
@@ -13,6 +14,7 @@ export const ITEMS = {
   amt:     { icon: "🚓", name: "Ordnungsamt" },
   doener:  { icon: "🥙", name: "Döner mit alles" },
 };
+if (FAMILY) for (const k in FAMILY_ITEMS) Object.assign(ITEMS[k], FAMILY_ITEMS[k]);
 export const ROULETTE = Object.keys(ITEMS).filter(k => k !== "pack");
 
 // Gewichte: vorne (t=0) .. hinten (t=1)
@@ -56,7 +58,7 @@ function makeBottle(color = "#5a3a12", label = "#e8e0c8") {
 function makePack() {
   const g = new THREE.Group();
   const b = new THREE.Mesh(new THREE.BoxGeometry(1.3, 1.7, 0.6), [lam("#f2f2f2"), lam("#f2f2f2"), lam("#c8102e"), lam("#f2f2f2"),
-    lam("#fff", { map: T.sign("KIPPEN", "#ffffff", "#c8102e", { font: "bold 54px Arial" }) }), lam("#fff", { map: T.sign("RAUCHEN KANN TÖDLICH SEIN", "#ffffff", "#111", { font: "bold 40px Arial" }) })]);
+    lam("#fff", { map: FAMILY ? T.sign("BONBON", "#ff7ad9", "#ffffff", { font: "bold 54px Arial" }) : T.sign("KIPPEN", "#ffffff", "#c8102e", { font: "bold 54px Arial" }) }), lam("#fff", { map: FAMILY ? T.sign("LECKER!", "#ff7ad9", "#ffffff", { font: "bold 54px Arial" }) : T.sign("RAUCHEN KANN TÖDLICH SEIN", "#ffffff", "#111", { font: "bold 40px Arial" }) })]);
   b.position.y = 0.85; g.add(b);
   const lid = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.5, 0.62), lam("#c8102e")); lid.position.y = 1.5; g.add(lid);
   g.rotation.z = 0.0;
@@ -66,7 +68,7 @@ function makeKasten() {
   const g = new THREE.Group();
   const crate = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.2, 1.4), lam("#d4a017"));
   crate.position.y = 0.6; g.add(crate);
-  const side = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.6), new THREE.MeshBasicMaterial({ map: T.sign("BIER", "#d4a017", "#5a2a0a", { font: "bold 70px Arial" }) }));
+  const side = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.6), new THREE.MeshBasicMaterial({ map: FAMILY ? T.sign("SAFT", "#3aa84a", "#ffffff", { font: "bold 70px Arial" }) : T.sign("BIER", "#d4a017", "#5a2a0a", { font: "bold 70px Arial" }) }));
   side.position.set(0, 0.6, 0.71); g.add(side);
   const s2 = side.clone(); s2.position.z = -0.71; s2.rotation.y = Math.PI; g.add(s2);
   const bm = new THREE.MeshPhongMaterial({ color: "#5a3a12", shininess: 90 });
@@ -144,7 +146,7 @@ export class Items {
       case "vape": {
         for (const o of race.racers) if (o !== r && o.place < r.place && o.invT <= 0) { o.blindT = 4.5; o.events.push({ t: "blind" }); }
         for (let i = 0; i < 18; i++) race.fx.spawn("smoke", r.x + (Math.random() - 0.5) * 3, r.y + 1.5 + Math.random(), r.z + (Math.random() - 0.5) * 3,
-          { size: 3, grow: 3, life: 2.2, alpha: 0.7, vy: 1.5, vx: (Math.random() - 0.5) * 4, vz: (Math.random() - 0.5) * 4, color: "#e8f0ff", drag: 0.5 });
+          { size: 3, grow: 3, life: 2.2, alpha: 0.7, vy: 1.5, vx: (Math.random() - 0.5) * 4, vz: (Math.random() - 0.5) * 4, color: FAMILY ? "#bfe8ff" : "#e8f0ff", drag: 0.5 });
         r.events.push({ t: "vape" });
         consume(); break;
       }
@@ -171,7 +173,7 @@ export class Items {
       case "doener": r.invT = 7; r.events.push({ t: "doener" }); consume(); break;
       case "jaegi": {
         const dir = r.input.back ? -1 : 1;
-        const m = makeBottle("#1f4d2a", "#e88a1a");
+        const m = FAMILY ? new THREE.Mesh(new THREE.SphereGeometry(0.42, 16, 12), new THREE.MeshPhongMaterial({ color: "#3a9ff0", shininess: 120, transparent: true, opacity: 0.85 })) : makeBottle("#1f4d2a", "#e88a1a");
         m.scale.setScalar(1.3);
         const x = r.x + fwd[0] * 3 * dir, z = r.z + fwd[1] * 3 * dir;
         m.position.set(x, r.y + 0.8, z);
@@ -243,7 +245,7 @@ export class Items {
       if (edge && r.item && r.roulette <= 0 && !(r.lockItem > 0) && race.started && r.spinT <= 0) this.use(r);
       // Rauch beim Kippe-Rauchen
       if (r.smokeT > 0 && Math.random() < dt * 14) {
-        race.fx.spawn("smoke", r.x - Math.sin(r.heading) * 1.2, r.y + 2.2, r.z - Math.cos(r.heading) * 1.2, { size: 0.9, grow: 3, life: 1.4, alpha: 0.6, vy: 1.2, color: "#dddddd" });
+        race.fx.spawn("smoke", r.x - Math.sin(r.heading) * 1.2, r.y + 2.2, r.z - Math.cos(r.heading) * 1.2, FAMILY ? { size: 0.5, grow: 1.5, life: 0.9, alpha: 0.9, vy: 1.4, color: "#ff9ad9" } : { size: 0.9, grow: 3, life: 1.4, alpha: 0.6, vy: 1.2, color: "#dddddd" });
       }
     }
     // Objekte

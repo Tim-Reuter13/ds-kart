@@ -146,7 +146,7 @@ kbd{background:#fff;color:#111;border-radius:5px;padding:1px 6px;font-size:12px;
   <div class="slots" id="slots"></div>
   <div class="hint">Mitmachen: <kbd>Leertaste</kbd> (WASD) · <kbd>Shift rechts</kbd> (Pfeile) · Controller <kbd>A</kbd> · Handy über QR.
     Fahrer wechseln: links/rechts · bestätigen: nochmal drücken · raus: <kbd>Esc</kbd>/<kbd>B</kbd></div>
-  <div style="margin-top:16px;display:flex;gap:12px"><button class="btn" id="toAudio">🎙 Audio-Profil</button><button class="btn" id="toSetup">Weiter ▶</button></div>
+  <div style="margin-top:16px;display:flex;gap:12px"><button class="btn" id="toAudio">🎙 Audio-Profil</button><button class="btn" id="toSettings">⚙ Einstellungen</button><button class="btn" id="toSetup">Weiter ▶</button></div>
 </div>
 
 <div class="screen" id="s-setup">
@@ -182,6 +182,17 @@ kbd{background:#fff;color:#111;border-radius:5px;padding:1px 6px;font-size:12px;
   <div class="small" id="rmMsg"></div>
   <div class="row" style="margin-top:12px"><button class="btn sm" id="rmPlay">▶ Anhören</button><button class="btn sm" id="rmSave">✔ Speichern</button><button class="btn sm" id="rmClose">Abbrechen</button></div>
 </div></div>
+
+<div class="screen" id="s-settings">
+  <h2>Einstellungen</h2>
+  <div class="panel" style="min-width:min(560px,92vw)">
+    <div class="label">Grafik</div><div class="row" id="sQ"></div>
+    <div class="label">Musik</div><div class="row"><input type="range" id="sMus" min="0" max="100" style="width:280px"></div>
+    <div class="label">Effekte &amp; Stimmen</div><div class="row"><input type="range" id="sSfx" min="0" max="100" style="width:280px"></div>
+    <div class="label">Sonstiges</div><div class="row"><button class="btn" id="sTest">Test</button></div>
+  </div>
+  <div style="margin-top:16px"><button class="btn" id="sBack">◀ Zurück</button></div>
+</div>
 
 <div class="screen" id="s-load"><div id="loading">Lade Strecke…</div></div>
 

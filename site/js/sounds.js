@@ -1,5 +1,6 @@
 // Katalog aller Geraeusche, die man im Audio-Profil ersetzen kann
 import { DRIVERS } from "./cars.js";
+import { clean } from "./family.js";
 
 export const SFX = [
   ["letsgo", "Ansage „Let's go!“ (Sonja)", "Kommt beim Start jedes Rennens zusammen mit dem Startsignal – Sonja spricht das ein!"],
@@ -10,7 +11,10 @@ export const SFX = [
   ["boost", "Boost", "Energy, Kurze, Drift-Boost, Raketenstart."],
   ["spark", "Drift-Funken", "Jede neue Glut-Stufe beim Driften."],
   ["hit", "Getroffen", "Wenn dein Auto rumgeschleudert wird."],
-  ["wall", "Wand / Leitplanke", "Beim Reinfahren in die Begrenzung."],
+  ["wall", "Wand streifen", "Leichtes Streifen an der Begrenzung."],
+  ["crash", "Crash", "Harter Aufprall gegen Hecke, Zaun oder Mauer bei hohem Tempo."],
+  ["bump", "Zusammenprall", "Wenn zwei Autos aneinanderstoßen."],
+  ["land", "Aufsetzen", "Wenn das Auto nach einem Sprung auf den Boden knallt."],
   ["throw", "Wurf", "Kräuterschnaps nach vorne werfen."],
   ["drop", "Ablegen", "Kippenschachtel oder Bierkasten hinter sich lassen."],
   ["pfand", "Pfandflasche", "Beim Einsammeln einer Pfandflasche (+25 ct)."],
@@ -54,5 +58,6 @@ export function catalog() {
   for (const [id, name, desc] of SFX) out.push({ id: "sfx." + id, cat: "sfx", name, desc, max: 4 });
   for (const d of DRIVERS) for (const [line, name, desc, max] of VOICE_LINES) out.push({ id: `voice.${d.id}.${line}`, cat: "voice", driver: d.id, line, name: `${name}`, who: d.name, desc, max, color: d.hud });
   for (const [id, name, desc] of MUSIC) out.push({ id: "music." + id, cat: "music", name, desc, max: 60 });
+  for (const o of out) { o.name = clean(o.name); o.desc = clean(o.desc); }
   return out;
 }

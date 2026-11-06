@@ -1,4 +1,5 @@
 import { ITEMS, ROULETTE } from "./items.js";
+import { FAMILY } from "./family.js";
 
 const EMOJI = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
 const FONT = '"Arial Black","Segoe UI",Arial,sans-serif';
@@ -53,7 +54,7 @@ export class HUD {
         gr.addColorStop(0, `rgba(235,240,248,${0.95 * a})`); gr.addColorStop(0.6, `rgba(225,230,240,${0.7 * a})`); gr.addColorStop(1, "rgba(220,225,235,0)");
         g.fillStyle = gr; g.beginPath(); g.arc(bx, by, rad, 0, 7); g.fill();
       }
-      txt(g, "💨", x + w * 0.5, y + h * 0.18, 40 * u, "#fff", "center", EMOJI);
+      txt(g, FAMILY ? "🫧" : "💨", x + w * 0.5, y + h * 0.18, 40 * u, "#fff", "center", EMOJI);
     }
     // Getroffen: roter Bildrand
     if (r.hitFlash > 0) {
@@ -108,7 +109,7 @@ export class HUD {
     }
     g.restore();
     if (icon && r.roulette <= 0 && r.item) { const nm = ITEMS[r.item].name; g.font = `700 ${16 * u}px Arial`; const tw = g.measureText(nm).width; glass(bx, by + bs + 8 * u, tw + 20 * u, 26 * u, 10 * u); txt(g, nm, bx + 10 * u, by + bs + 21 * u, 16 * u, "#fff", "left", "Arial, sans-serif"); }
-    if (r.smokeT > 0) txt(g, "🚬 rauchen…", bx + bs + 12 * u, by + 22 * u, 18 * u, "#ddd", "left", "Arial, sans-serif");
+    if (r.smokeT > 0) txt(g, FAMILY ? "🍭 schlecken…" : "🚬 rauchen…", bx + bs + 12 * u, by + 22 * u, 18 * u, "#ddd", "left", "Arial, sans-serif");
 
     // Runde + Zeit
     const lw = 170 * u, lh = 78 * u, lx = x + w - lw - 18 * u, ly = y + 18 * u;
@@ -139,7 +140,7 @@ export class HUD {
     glass(nx, ny, nw, nh, 16 * u);
     g.fillStyle = r.driver.hud; rrect(g, nx + 8 * u, ny + 10 * u, 6 * u, nh - 20 * u, 3 * u); g.fill();
     txt(g, r.driver.name, nx + 22 * u, ny + 18 * u, 17 * u, "#fff", "left", "Arial, sans-serif");
-    txt(g, "🍾", nx + 22 * u, ny + 41 * u, 20 * u, "#fff", "left", EMOJI);
+    txt(g, FAMILY ? "♻️" : "🍾", nx + 22 * u, ny + 41 * u, 20 * u, "#fff", "left", EMOJI);
     txt(g, `${r.pfand}  ·  ${euro} €`, nx + 50 * u, ny + 41 * u, 17 * u, r.pfand >= 10 ? "#ffd23a" : "#e8eef4", "left", "Arial, sans-serif");
 
     // Drift-Glut
@@ -173,7 +174,7 @@ export class HUD {
         if (Math.floor(race.time * 6) % 2) txt(g, "🚓 ORDNUNGSAMT KOMMT!", cx, y + 128 * u, 34 * u, "#7fb0ff", "center");
       } else if (o.kind === "jaegi" && o.owner !== r) {
         const dx = r.x - o.x, dz = r.z - o.z, d = Math.hypot(dx, dz);
-        if (d < 38 && d > 2 && (Math.sin(o.h) * dx + Math.cos(o.h) * dz) / d > 0.9) txt(g, "⚠ 🍾 von hinten!", cx, y + 128 * u, 32 * u, "#ffb02a", "center", EMOJI);
+        if (d < 38 && d > 2 && (Math.sin(o.h) * dx + Math.cos(o.h) * dz) / d > 0.9) txt(g, (FAMILY ? "⚠ 💦 von hinten!" : "⚠ 🍾 von hinten!"), cx, y + 128 * u, 32 * u, "#ffb02a", "center", EMOJI);
       }
     }
     if (r.wrongT > 1.2 && !r.finished) txt(g, "Falsche Richtung!", cx, cy + 10 * u, 46 * u, "#ff6a5a", "center");

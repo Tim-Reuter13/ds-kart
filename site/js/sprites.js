@@ -2,8 +2,9 @@
 // Pro Kamera (auch im Splitscreen) wird die passende Ansicht gewaehlt.
 // Sie bekommen das Spiellicht ab (Sonne, Himmel, Schatten) und wippen/wanken beim Fahren.
 import * as THREE from "three";
+import { FAMILY } from "./family.js";
 
-export const SPRITE_DRIVERS = ["tim", "franzi"];
+export const SPRITE_DRIVERS = ["tim", "franzi", "sonja", "jannik", "giovanni"];
 const sets = {};
 
 export async function loadSpriteSet(id) {
@@ -50,6 +51,8 @@ export class SpriteCar {
   }
 
   play(state, hold = 0) {
+    if (FAMILY && state === "vape") state = "werfen";
+    if (state === "vape" && !this.maps.vape && this.maps.fauchen) state = "fauchen"; // Giovanni faucht statt zu dampfen
     if (!this.maps[state]) return;
     this.state = state; this.stateT = 0; this.hold = hold;
     if (state === "schaden") this.jolt = 1;
@@ -58,7 +61,7 @@ export class SpriteCar {
   update(dt, r) {
     this.stateT += dt; this.t += dt;
     if (r.spinT > 0 && this.state !== "schaden") this.play("schaden", r.spinT);
-    if (r.smokeT > 0 && this.state === "fahren") this.play("vape", r.smokeT);
+    if (r.smokeT > 0 && this.state === "fahren" && !FAMILY) this.play("vape", r.smokeT);
     const s = this.set.spec.states[this.state];
     if (this.state !== "fahren") {
       const once = (s.dur * 2) / 1000;

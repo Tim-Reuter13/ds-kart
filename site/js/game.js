@@ -10,15 +10,16 @@ import { T } from "./tex.js";
 import { buildRaceDeco } from "./racedeco.js";
 import { SpriteCar } from "./sprites.js";
 import { Recorder, Replay } from "./replay.js";
+import { FAMILY, clean } from "./family.js";
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const MSG = {
-  hit: ["Autsch!", "Voll reingefahren!", "Kippenschachtel gefressen!", "Läuft bei dir…", "Bruder, nein!"],
+  hit: FAMILY ? ["Autsch!", "Voll reingefahren!", "Uiii!", "Hoppla!", "Nicht schon wieder!"] : ["Autsch!", "Voll reingefahren!", "Kippenschachtel gefressen!", "Läuft bei dir…", "Bruder, nein!"],
   flash: ["📸 Geblitzt!", "📸 Bild kommt per Post!", "📸 Punkte in Flensburg!"],
-  blind: ["💨 Vape-Wolke!", "💨 Mango-Ice im Gesicht!", "💨 Sicht weg!"],
+  blind: FAMILY ? ["🫧 Seifenblasen!", "🫧 Alles voller Blasen!", "🫧 Sicht weg!"] : ["💨 Vape-Wolke!", "💨 Mango-Ice im Gesicht!", "💨 Sicht weg!"],
   kontrolle: ["🚓 Allgemeine Verkehrskontrolle!", "🚓 Führerschein und Fahrzeugschein, bitte!"],
   doener: ["🥙 Döner-Power!", "🥙 Mit alles und scharf!"],
-  pfandFull: ["🍾 2,50 € Pfand – Maximum!"],
+  pfandFull: [(FAMILY ? "♻️" : "🍾") + " 2,50 € Pfand – Maximum!"],
 };
 const pick = (a) => a[(Math.random() * a.length) | 0];
 
@@ -76,6 +77,7 @@ export class Race {
     this.sun = sun;
     this.sunDir = new THREE.Vector3(-0.5, 0.75, 0.35).normalize();
 
+    if (def.prepare && !data._prepared) { def.prepare(data); data._prepared = true; }
     this.track = new Track(data, def);
     if (def.setup) def.setup(this.track, data);
     this.track.setRamps(def.ramps || []);
@@ -203,7 +205,14 @@ export class Race {
       a.x -= nx * over * ka; a.z -= nz * over * ka; b.x += nx * over * kb; b.z += nz * over * kb;
       if (a.invT > 0 && b.invT <= 0) b.hit("spin", 1.0, { by: a, item: "doener" });
       else if (b.invT > 0 && a.invT <= 0) a.hit("spin", 1.0, { by: b, item: "doener" });
-      else { a.speed *= 0.985; b.speed *= 0.985; if (a.human) a.events.push({ t: "bump" }); if (b.human) b.events.push({ t: "bump" }); }
+      else {
+        const rel = Math.abs(a.speed - b.speed) + Math.abs(Math.sin(a.heading - b.heading)) * 10;
+        a.speed *= 0.985; b.speed *= 0.985;
+        if ((a.bumpSnd || 0) < this.time && (b.bumpSnd || 0) < this.time && rel > 2.5) {
+          a.bumpSnd = b.bumpSnd = this.time + 0.6;
+          if (a.human) a.events.push({ t: "bump" }); else if (b.human) b.events.push({ t: "bump" });
+        }
+      }
     }
 
     // Platzierungen (+ Ueberhol-Spruch fuer Spieler)
@@ -257,11 +266,11 @@ export class Race {
   }
 
   handleEvents() {
-    const RUMBLE = { hit: 350, wall: 70, box: 25, boost: 120, spark: 20, flash: 500, kontrolle: 650, pfand: 15, got: 30, bump: 40, trick: 60, splash: 300, blind: 150 };
+    const RUMBLE = { crash: 220, land: 90, hit: 350, wall: 70, box: 25, boost: 120, spark: 20, flash: 500, kontrolle: 650, pfand: 15, got: 30, bump: 40, trick: 60, splash: 300, blind: 150 };
     for (const r of this.racers) {
       for (const e of r.events) {
         const hum = r.human;
-        if (r.sprite) { if (e.t === "hit") r.sprite.play("schaden", 1.2); else if (e.t === "vape") r.sprite.play("vape"); else if (["throw", "drop", "camera", "siren", "doener", "lighter"].includes(e.t)) r.sprite.play("werfen"); }
+        if (r.sprite) { if (e.t === "hit") r.sprite.play("schaden", 1.2); else if (e.t === "vape") r.sprite.play(FAMILY ? "werfen" : "vape"); else if (["throw", "drop", "camera", "siren", "doener", "lighter"].includes(e.t)) r.sprite.play("werfen"); }
         if (hum && RUMBLE[e.t] && r.dev?.startsWith("ph")) this.net.send(r.dev, { t: "rumble", ms: RUMBLE[e.t] });
         switch (e.t) {
           case "hit": this.rec.event("hit", { victim: r.id, by: e.by ? e.by.id : null, item: e.item }, (hum || (e.by && e.by.human) ? 5 : 2) + (e.item === "amt" || e.item === "blitzer" ? 1 : 0));
@@ -270,6 +279,9 @@ export class Race {
             const txt = e.by && e.by !== r ? `${it ? it.icon + " " : ""}${e.by.driver.name} hat dich erwischt!` : e.by === r ? "Eigentor! 🤦" : pick(MSG.hit);
             this.hud.message(r, txt, 2.2, "#ff8a7a", it && e.by !== r ? it.name : ""); this.audio.voice(r.driver.id, "hit"); } else if (this.nearHuman(r, 45) && Math.random() < 0.4) this.audio.voice(r.driver.id, "hit"); break;
           case "wall": if (hum) this.sfx("wall"); break;
+          case "crash": if (hum) { this.sfx("crash"); r.shakeReq = Math.min(1, e.impact / 18); } else if (this.nearHuman(r, 30)) this.sfx("crash"); break;
+          case "bump": this.sfx("bump"); break;
+          case "land": if (hum) { this.sfx("land"); r.shakeReq = Math.min(0.9, e.air); } break;
           case "scored": if (hum) { this.hud.message(r, `🎯 Treffer! ${e.victim.driver.name} erwischt`, 1.6, "#6aff7a"); if (r.dev?.startsWith("ph")) this.net.send(r.dev, { t: "rumble", ms: 60 }); } break;
           case "box": if (hum) this.sfx("box"); break;
           case "got": if (hum) { this.sfx("got"); this.say(r, "gotitem", 6); } break;
@@ -380,6 +392,8 @@ export class Race {
     const draw = (target) => {
       const pr = rd.getPixelRatio();
       rd.setClearColor("#000");
+      // ganzes Zwischenbild loeschen: Fugen zwischen Ansichten wuerden sonst vom Bloom jedes Bild aufaddiert (-> alles weiss)
+      if (target) { target.scissorTest = false; target.viewport.set(0, 0, target.width, target.height); target.scissor.set(0, 0, target.width, target.height); rd.setRenderTarget(target); rd.clear(); }
       if (!target) rd.setScissorTest(true);
       const many = cams.length > 4;
       const sc = this.sun.shadow.camera, ext = many ? 150 : 75;
