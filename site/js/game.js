@@ -132,7 +132,8 @@ export class Race {
     while (this.acc >= STEP) { this.tick(STEP); this.acc -= STEP; }
     this.world.update(dt, this.time + 100);
     this.fx.update(dt);
-    for (const r of this.racers) r.syncModel(dt);
+    const alpha = Math.min(1, this.acc / STEP);
+    for (const r of this.racers) r.syncModel(dt, alpha);
   }
 
   tick(dt) {
@@ -151,7 +152,7 @@ export class Race {
         for (const h of this.humans) {
           const t0 = this.rocket.get(h);
           if (t0 !== undefined && t0 < 1.6 && t0 > 0.6) { h.boost(1.0); this.hud.message(h, "Raketenstart!", 1.2, "#6aff7a"); }
-          else if (t0 !== undefined && t0 >= 2.6) { h.spinT = 0.8; this.hud.message(h, "Abgewürgt!", 1.2, "#ff8a5a"); }
+          else if (t0 !== undefined && t0 >= 2.6 && !(h.dev || '').startsWith('ph')) { h.spinT = 0.8; this.hud.message(h, "Abgewürgt!", 1.2, "#ff8a5a"); }
         }
         for (const r of this.racers) if (!r.human && Math.random() < 0.4) r.boost(0.8);
       }
@@ -263,9 +264,10 @@ export class Race {
     return v;
   }
 
-  updateCam(cam, r, dt, tv = false) {
+  updateCam(cam, r0, dt, tv = false) {
+    const r = { x: r0.rx ?? r0.x, y: r0.ry ?? r0.y, z: r0.rz ?? r0.z, heading: r0.rh ?? r0.heading, input: r0.input, human: r0.human, boostT: r0.boostT, speed: r0.speed };
     const fx = Math.sin(r.heading), fz = Math.cos(r.heading);
-    const back = !tv && r.input.back && r.human;
+    const back = !tv && r.input.back && r.human && !(r0.dev || '').startsWith('ph');
     const dist = tv ? 11 : 7.4, height = tv ? 5 : 3.2;
     const sgn = back ? -1 : 1;
     const want = new THREE.Vector3(r.x - fx * dist * sgn, r.y + height, r.z - fz * dist * sgn);

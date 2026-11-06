@@ -40,6 +40,7 @@ export class Racer {
   place_on_grid(track, s, off) {
     const p = track.at(s, off);
     this.x = p.x; this.z = p.z; this.y = p.y; this.heading = p.heading; this.hint = p.i;
+    this.ox = this.x; this.oy = this.y; this.oz = this.z; this.oh = this.heading;
     const q = track.locate(this.x, this.z, this.hint);
     this.s = q.s; this.d = q.d;
     this.total = s - track.L; // vor der Linie
@@ -70,6 +71,7 @@ export class Racer {
     const st = this.stats();
     const cls = race.cls;
     const inp = this.input;
+    this.ox = this.x; this.oy = this.y; this.oz = this.z; this.oh = this.heading;
     const driftEdge = inp.drift && !this.prevDrift;
     this.prevDrift = inp.drift;
 
@@ -78,6 +80,7 @@ export class Racer {
       if (this.respawnT <= 0) {
         const p = track.at(this.safe.s, 0);
         this.x = p.x; this.z = p.z; this.y = p.y; this.vy = 0; this.heading = p.heading; this.speed = 0;
+        this.ox = this.x; this.oy = this.y; this.oz = this.z; this.oh = this.heading;
         this.hint = p.i; this.air = false; this.spinT = 0;
       }
       return;
@@ -101,7 +104,9 @@ export class Racer {
     const control = started && this.spinT <= 0;
     const gas = control && inp.gas;
     const brake = control && inp.brake;
-    const steer = control ? clamp(inp.steer, -1, 1) : 0;
+    const rawSteer = control ? clamp(inp.steer, -1, 1) : 0;
+    this.steerS = (this.steerS || 0) + (rawSteer - (this.steerS || 0)) * Math.min(1, dt * 14);
+    const steer = Math.abs(this.steerS) < 0.01 && rawSteer === 0 ? 0 : this.steerS;
 
     // Geschwindigkeit
     const acc = 15.5 * st.accel;
@@ -239,12 +244,15 @@ export class Racer {
 
   progress(L) { return this.finished ? 1e9 - this.finishTime : this.total; }
 
-  syncModel(dt) {
+  syncModel(dt, alpha = 1) {
     const m = this.car.root;
-    m.position.set(this.x, this.y, this.z);
+    const ox = this.ox ?? this.x, oy = this.oy ?? this.y, oz = this.oz ?? this.z, oh = this.oh ?? this.heading;
+    let dh = this.heading - oh; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
+    this.rx = ox + (this.x - ox) * alpha; this.ry = oy + (this.y - oy) * alpha; this.rz = oz + (this.z - oz) * alpha; this.rh = oh + dh * alpha;
+    m.position.set(this.rx, this.ry, this.rz);
     const targetYaw = this.drift ? this.drift.dir * 0.42 : (this.steerVis || 0) * 0.06;
     this.visualYaw += (targetYaw - this.visualYaw) * Math.min(1, dt * 8);
-    m.rotation.y = this.heading + this.visualYaw + (this.spinT > 0 ? this.trickSpin : 0);
+    m.rotation.y = this.rh + this.visualYaw + (this.spinT > 0 ? this.trickSpin : 0);
     const b = this.car.body;
     b.rotation.z = -(this.steerVis || 0) * Math.min(1, Math.abs(this.speed) / 20) * 0.06 - (this.drift ? this.drift.dir * 0.05 : 0);
     const pitch = -Math.atan(this.slopeVis || 0);
@@ -253,8 +261,8 @@ export class Racer {
     b.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.3);
     this.car.update(dt, this.speed, this.steerVis || 0);
     const sh = this.car.shadow;
-    sh.position.set(this.x, 0.16 + (this.groundH || 0), this.z);
-    sh.rotation.z = -this.heading;
+    sh.position.set(this.rx, 0.16 + (this.groundH || 0), this.rz);
+    sh.rotation.z = -this.rh;
     sh.material.opacity = Math.max(0.2, 1 - (this.y - (this.groundH || 0)) * 0.15);
     // Unsichtbar waehrend Respawn
     m.visible = this.respawnT <= 0 || Math.floor(this.respawnT * 10) % 2 === 0;
