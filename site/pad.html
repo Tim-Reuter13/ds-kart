@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="DS-Kart">
+<meta name="theme-color" content="#14284a">
+<title>DS-Kart Controller</title>
+<style>
+:root{--y:#ffd23a;--bg:#14284a;--panel:#1d3a6e;--line:#2e5290;--me:#ffd23a}
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:#fff;font:15px/1.3 -apple-system,system-ui,sans-serif;overflow:hidden;touch-action:none;overscroll-behavior:none}
+button{font:inherit;color:inherit}
+.scr{position:fixed;inset:0;display:none;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+.scr.on{display:flex}
+h1{margin:0;font-size:34px;font-weight:900;font-style:italic;color:var(--y);letter-spacing:1px;text-shadow:0 3px 0 #7a1f0a}
+#s-join{align-items:center;justify-content:center}
+#s-join .card{width:min(420px,100%);display:flex;flex-direction:column;gap:12px}
+input{font-size:20px;padding:12px;border-radius:12px;border:2px solid var(--line);background:#0e1e3a;color:#fff;-webkit-user-select:text;user-select:text;text-transform:none}
+#code{text-transform:uppercase;letter-spacing:6px;font-weight:800;text-align:center}
+.go{font-size:22px;font-weight:900;padding:16px;border:0;border-radius:14px;background:var(--y);color:#3a1a05;box-shadow:0 5px 0 #a8650a}
+.msg{color:#ffb0a0;font-size:14px;min-height:18px}
+.hint{color:#b9c8de;font-size:13px}
+/* Fahrerwahl */
+#s-pick{flex-direction:column;gap:10px;overflow:auto;touch-action:pan-y}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.drv{border-radius:14px;padding:12px;background:var(--panel);border:3px solid transparent;text-align:left}
+.drv .n{font-weight:900;font-size:19px}
+.drv .c{font-size:13px;color:#cfe0f4}
+.drv .sw{height:8px;border-radius:4px;margin-bottom:8px}
+.drv.mine{border-color:var(--y)}
+.drv.taken{opacity:.35}
+/* Menue */
+#s-menu{align-items:center;justify-content:space-around}
+.dpad{position:relative;width:min(46vh,230px);height:min(46vh,230px)}
+.dpad button{position:absolute;width:33%;height:33%;border-radius:14px;border:0;background:var(--panel);font-size:28px}
+.dpad .u{left:33.5%;top:0}.dpad .d{left:33.5%;bottom:0}.dpad .l{left:0;top:33.5%}.dpad .r{right:0;top:33.5%}
+.mbtns{display:flex;flex-direction:column;gap:12px;width:min(40vw,260px)}
+.mbtns button{padding:18px;border-radius:16px;border:0;font-size:22px;font-weight:900}
+.ok{background:#3f8f4f}.back{background:#a8432f}.start{background:var(--y);color:#3a1a05}
+.down{filter:brightness(1.4);transform:scale(.96)}
+/* Rennen */
+#s-race{flex-direction:column;padding-top:max(6px,env(safe-area-inset-top))}
+#top{height:44px;display:flex;align-items:center;gap:10px;padding:0 4px}
+#top .pl{font-size:28px;font-weight:900;font-style:italic;color:var(--me);min-width:56px}
+#top .it{font-size:30px;width:46px;height:40px;border-radius:10px;background:#0e1e3a;display:flex;align-items:center;justify-content:center}
+#top .lap,#top .pf{font-size:14px;color:#cfe0f4}
+#top .sp{flex:1}
+.icon{width:42px;height:36px;border-radius:10px;border:0;background:var(--panel);font-size:18px}
+#field{flex:1;display:flex;gap:10px;padding:4px 0 2px;min-height:0}
+#left,#right{flex:1;position:relative}
+.b{position:absolute;display:flex;align-items:center;justify-content:center;flex-direction:column;border-radius:20px;font-weight:900;font-size:22px;border:3px solid rgba(255,255,255,.15)}
+.b small{font-size:12px;font-weight:700;opacity:.9}
+.b.down{transform:scale(.95);filter:brightness(1.35);border-color:rgba(255,255,255,.6)}
+#bDrift{right:0;bottom:0;width:58%;height:62%;background:#d9771a;border-radius:50% 20px 20px 20px}
+#bGas{right:0;top:0;width:58%;height:34%;background:#3f8f4f}
+#bBrake{left:0;bottom:0;width:38%;height:46%;background:#a8432f}
+#bItem{left:0;top:0;width:38%;height:50%;background:#3b6fa3}
+#bBack{right:60%;top:0;width:0;height:0;display:none}
+#stick{position:absolute;inset:0;border-radius:20px;background:#0e1e3a;border:2px solid var(--line);overflow:hidden}
+#base,#knob{position:absolute;border-radius:50%;pointer-events:none;transform:translate(-50%,-50%)}
+#base{width:140px;height:140px;border:2px solid var(--line)}
+#knob{width:62px;height:62px;background:var(--me)}
+#lItem{position:absolute;inset:0;display:none;background:#3b6fa3}
+#tilt{position:absolute;left:12px;right:12px;top:10px;height:10px;border-radius:5px;background:#0e1e3a;display:none}
+#tilt i{position:absolute;top:-4px;width:8px;height:18px;border-radius:4px;background:var(--me);left:50%;transform:translateX(-50%)}
+body.tilt #stick{display:none}
+body.tilt #lItem{display:flex}
+body.tilt #bItem{display:none}
+body.tilt #bBrake{height:100%;width:38%}
+body.tilt #tilt{display:block}
+body.autogas #bGas{display:none}
+body.autogas #bDrift{height:100%}
+/* Einstellungen */
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:9;padding:14px}
+#sheet.open{display:flex}
+#sheet .card{background:#0e1e3a;border:2px solid var(--line);border-radius:16px;padding:14px;width:min(520px,100%);max-height:100%;overflow:auto;touch-action:pan-y}
+.rowx{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.rowx small{display:block;color:#9fb3d1}
+.tog{width:52px;height:30px;border-radius:15px;background:#3a4560;position:relative;border:0;flex:none}
+.tog::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#ddd;transition:left .12s}
+.tog.on{background:#3f8f4f}.tog.on::after{left:25px}
+.pill{padding:8px 14px;border-radius:12px;border:0;background:var(--panel)}
+#rot{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:var(--bg);z-index:20;font-size:20px;text-align:center;padding:30px}
+@media (orientation:portrait){body.racing #rot{display:flex}}
+#hap{position:fixed;left:-300px;top:0;opacity:0;pointer-events:none}
+#net{font-size:12px;color:#9fb3d1}
+</style>
+</head>
+<body>
+<div class="scr on" id="s-join">
+  <div class="card">
+    <h1>DS-KART</h1>
+    <div class="hint">Dein Handy wird zum Lenkrad.</div>
+    <input id="code" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters">
+    <input id="name" maxlength="14" placeholder="Dein Name" autocomplete="off">
+    <button class="go" id="go">Mitspielen</button>
+    <div class="msg" id="jmsg"></div>
+    <div class="hint">Tipp: Teilen → „Zum Home-Bildschirm“ für Vollbild.</div>
+  </div>
+</div>
+
+<div class="scr" id="s-pick">
+  <h1>Wer bist du?</h1>
+  <div class="grid" id="drivers"></div>
+  <div class="hint" id="pickmsg">Tippe auf deinen Fahrer. Wenn alle bereit sind, startet der PC.</div>
+  <button class="go" id="pStart">Alle bereit → Weiter</button>
+</div>
+
+<div class="scr" id="s-menu">
+  <div class="dpad">
+    <button class="u" data-k="up">▲</button><button class="l" data-k="left">◀</button>
+    <button class="r" data-k="right">▶</button><button class="d" data-k="down">▼</button>
+  </div>
+  <div class="mbtns">
+    <button class="ok" data-k="ok">OK</button>
+    <button class="back" data-k="cancel">Zurück</button>
+    <button class="start" data-k="start">Start / Pause</button>
+  </div>
+</div>
+
+<div class="scr" id="s-race">
+  <div id="top">
+    <span class="pl" id="pl">–</span>
+    <span class="it" id="it"></span>
+    <span class="lap" id="lap"></span>
+    <span class="pf" id="pf"></span>
+    <span class="sp"></span>
+    <span id="net">…</span>
+    <button class="icon" id="pauseB" data-k="start">⏸</button>
+    <button class="icon" id="gear">⚙</button>
+  </div>
+  <div id="field">
+    <div id="left">
+      <div id="stick"><div id="base"></div><div id="knob"></div></div>
+      <div class="b" id="lItem" data-k="item">🎁<small>Item</small></div>
+      <div id="tilt"><i></i></div>
+    </div>
+    <div id="right">
+      <div class="b" id="bItem" data-k="item">🎁<small>Item</small></div>
+      <div class="b" id="bGas" data-k="gas">Gas</div>
+      <div class="b" id="bBrake" data-k="brake">Bremse<small>+ Blick zurück</small></div>
+      <div class="b" id="bDrift" data-k="drift">Drift<small>halten + lenken</small></div>
+    </div>
+  </div>
+</div>
+
+<div id="sheet"><div class="card">
+  <b>Einstellungen</b>
+  <div class="rowx"><div>Lenken durch Neigen<small>Handy wie ein Lenkrad drehen</small></div><button class="tog" id="tTilt"></button></div>
+  <div class="rowx"><div>Mitte setzen<small>Handy gerade halten und tippen</small></div><button class="pill" id="center">Jetzt</button></div>
+  <div class="rowx"><div>Lenkwinkel <small id="sensv"></small></div><input type="range" id="sens" min="12" max="60"></div>
+  <div class="rowx"><div>Lenkung umkehren</div><button class="tog" id="tInv"></button></div>
+  <div class="rowx"><div>Auto-Gas<small>Gibt immer Gas, außer beim Bremsen</small></div><button class="tog" id="tGas"></button></div>
+  <div class="rowx"><div>Vibration<small id="vibinfo"></small></div><button class="tog" id="tVib"></button></div>
+  <button class="go" id="close" style="width:100%;margin-top:10px">Fertig</button>
+</div></div>
+<div id="rot">📱↻<br>Handy quer halten</div>
+<label id="hap"><input type="checkbox" switch></label>
+
+<script src="vendor/peerjs.min.js"></script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const BITS = ["gas","brake","drift","item","back","up","down","left","right","ok","cancel","start"];
+const store = { get(k, d){ try { const v = localStorage.getItem("dsk_" + k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } }, set(k, v){ try { localStorage.setItem("dsk_" + k, JSON.stringify(v)); } catch(e){} } };
+const S = { tilt: store.get("tilt", true), inv: store.get("inv", false), sens: store.get("sens", 28), autogas: store.get("autogas", true), vib: store.get("vib", true), center: store.get("center", 0) };
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+function show(id){ document.querySelectorAll(".scr").forEach(s => s.classList.toggle("on", s.id === "s-" + id)); document.body.classList.toggle("racing", id === "race" || id === "menu"); mode = id; send(true); }
+let mode = "join";
+
+// ---- Haptik
+const hap = $("#hap");
+let lastTick = 0;
+function tick(force){ if (!S.vib) return; const n = performance.now(); if (!force && n - lastTick < 40) return; lastTick = n; if (navigator.vibrate) navigator.vibrate(12); else if (isIOS) hap.click(); }
+function rumble(ms){ if (!S.vib) return; if (navigator.vibrate) { navigator.vibrate(ms); return; } if (!isIOS) return; const n = Math.max(1, Math.round(ms / 70)); for (let i = 0; i < n; i++) setTimeout(() => hap.click(), i * 70); }
+
+// ---- Eingabe-Zustand
+const held = {}; let steer = 0, sx = 0, tiltX = 0, stickOn = false;
+function bits(){
+  let b = 0;
+  const h = Object.assign({}, held);
+  if (mode === "race" && S.autogas && !h.brake) h.gas = true;
+  if (h.brake) h.back = true;
+  BITS.forEach((k, i) => { if (h[k]) b |= 1 << i; });
+  return b;
+}
+let lastKey = "", lastSend = 0;
+function send(force){
+  const x = mode === "race" ? +((S.tilt && motionOk && !stickOn) ? tiltX : sx).toFixed(3) : 0;
+  const b = bits();
+  const key = b + "|" + x;
+  if (!force && key === lastKey) return;
+  lastKey = key; lastSend = performance.now();
+  if (conn && conn.open) conn.send({ t: "s", b, x });
+}
+setInterval(() => { if (performance.now() - lastSend > 120) send(true); }, 120);
+
+// Tasten mit Daumen-Rutschen
+const ptr = new Map();
+function recompute(){
+  for (const k of Object.keys(held)) held[k] = false;
+  document.querySelectorAll("[data-k].down").forEach(e => e.classList.remove("down"));
+  let newPress = false;
+  for (const el of ptr.values()) { const k = el.dataset.k; if (!prev[k]) newPress = true; held[k] = true; el.classList.add("down"); }
+  Object.assign(prev, held);
+  if (newPress) tick();
+  send();
+}
+const prev = {};
+document.addEventListener("pointerdown", e => {
+  const el = e.target.closest("[data-k]");
+  if (el && !$("#sheet").classList.contains("open")) { ptr.set(e.pointerId, el); recompute(); e.preventDefault(); }
+}, { passive: false });
+document.addEventListener("pointermove", e => {
+  if (!ptr.has(e.pointerId)) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const b = el && el.closest(".b[data-k]");
+  if (b && b !== ptr.get(e.pointerId) && ptr.get(e.pointerId).classList.contains("b")) { ptr.set(e.pointerId, b); recompute(); }
+});
+const up = e => { if (ptr.delete(e.pointerId)) recompute(); };
+document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
+document.addEventListener("touchstart", e => { if (!e.target.closest("#sheet,#s-join,#s-pick")) e.preventDefault(); }, { passive: false });
+document.addEventListener("gesturestart", e => e.preventDefault());
+
+// Stick
+const zone = $("#stick"), base = $("#base"), knob = $("#knob");
+let sid = null, cx = 0, cy = 0;
+function idle(){ const r = zone.getBoundingClientRect(); base.style.left = knob.style.left = r.width / 2 + "px"; base.style.top = knob.style.top = r.height / 2 + "px"; }
+zone.addEventListener("pointerdown", e => { if (sid !== null) return; sid = e.pointerId; stickOn = true; const r = zone.getBoundingClientRect(); cx = e.clientX - r.left; cy = e.clientY - r.top; base.style.left = knob.style.left = cx + "px"; base.style.top = knob.style.top = cy + "px"; sx = 0; send(); e.preventDefault(); });
+zone.addEventListener("pointermove", e => { if (e.pointerId !== sid) return; const r = zone.getBoundingClientRect(); let dx = e.clientX - r.left - cx; const R = 55; dx = Math.max(-R, Math.min(R, dx)); knob.style.left = (cx + dx) + "px"; let v = dx / R; v = Math.abs(v) < 0.1 ? 0 : (Math.abs(v) - 0.1) / 0.9 * Math.sign(v); sx = v; send(); });
+const send0 = e => { if (e.pointerId !== sid) return; sid = null; stickOn = false; sx = 0; idle(); send(); };
+zone.addEventListener("pointerup", send0); zone.addEventListener("pointercancel", send0);
+addEventListener("resize", idle);
+
+// Neigen
+let motionOk = false, raw = 0;
+function orient(){ if (typeof window.orientation === "number") return window.orientation; return (screen.orientation && screen.orientation.angle) || 0; }
+function onMotion(e){
+  const g = e.accelerationIncludingGravity; if (!g || g.x === null) return;
+  const a = orient() * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  const gx = g.x * c - g.y * s, gy = g.x * s + g.y * c;
+  raw = Math.atan2(-gx, gy) * 180 / Math.PI;
+  let ang = raw - S.center; while (ang > 180) ang -= 360; while (ang < -180) ang += 360;
+  if (S.inv) ang = -ang;
+  const dead = 2;
+  tiltX = Math.max(-1, Math.min(1, Math.abs(ang) < dead ? 0 : (Math.abs(ang) - dead) / (S.sens - dead) * Math.sign(ang)));
+  $("#tilt i").style.left = (50 + tiltX * 50) + "%";
+  if (S.tilt && mode === "race") send();
+}
+async function enableMotion(){
+  if (motionOk) return true;
+  try {
+    if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+      if (await DeviceMotionEvent.requestPermission() !== "granted") return false;
+    }
+    addEventListener("devicemotion", onMotion); motionOk = true; return true;
+  } catch(e){ return false; }
+}
+function calibrate(){ S.center = raw; store.set("center", raw); }
+
+// ---- Verbindung
+let peer = null, conn = null, retry = 0, joined = false;
+function setNet(t){ $("#net").textContent = t; }
+function connect(){
+  const code = $("#code").value.trim().toUpperCase();
+  if (!code) return;
+  setNet("verbinde…"); $("#jmsg").textContent = "";
+  const open = () => {
+    conn = peer.connect("dskart-" + code.toLowerCase(), { reliable: true });
+    let opened = false;
+    const to = setTimeout(() => { if (!opened) { $("#jmsg").textContent = "PC nicht gefunden. Code richtig? Gleiches WLAN?"; setNet("weg"); } }, 9000);
+    conn.on("open", () => { opened = true; clearTimeout(to); retry = 0; setNet("verbunden"); conn.send({ t: "hello", name: store.get("name", ""), token: store.get("token", "") }); });
+    conn.on("data", onMsg);
+    conn.on("close", () => { setNet("getrennt"); if (joined) setTimeout(connect, Math.min(4000, 500 * ++retry)); });
+    conn.on("error", () => {});
+  };
+  if (peer && !peer.destroyed && peer.open) open();
+  else {
+    if (peer) try { peer.destroy(); } catch(e){}
+    peer = new Peer({ debug: 0 });
+    peer.on("open", open);
+    peer.on("error", (err) => { if (err.type === "peer-unavailable") $("#jmsg").textContent = "Kein Spiel mit diesem Code gefunden."; else $("#jmsg").textContent = "Verbindungsfehler: " + err.type; setNet("Fehler"); });
+  }
+}
+function onMsg(m){
+  if (!m || typeof m !== "object") return;
+  if (m.t === "welcome") { store.set("token", m.token); }
+  else if (m.t === "mode") { show(m.m === "race" ? "race" : m.m === "pick" ? "pick" : "menu"); if (m.m === "race") requestAnimationFrame(idle); }
+  else if (m.t === "lobby") renderPick(m);
+  else if (m.t === "hud") {
+    $("#pl").textContent = m.place + "."; $("#it").textContent = m.item || ""; $("#lap").textContent = "Runde " + Math.min(m.lap, m.laps) + "/" + m.laps;
+    $("#pf").textContent = "🍾 " + (m.pfand * 0.25).toFixed(2).replace(".", ",") + " €";
+  }
+  else if (m.t === "rumble") rumble(m.ms);
+  else if (m.t === "full") { $("#jmsg").textContent = "Schon 4 Spieler drin."; }
+}
+function renderPick(m){
+  const box = $("#drivers");
+  box.innerHTML = m.drivers.map(d => `<button class="drv ${d.id === m.mine ? "mine" : ""} ${d.taken ? "taken" : ""}" data-d="${d.id}" ${d.taken ? "disabled" : ""}>
+    <div class="sw" style="background:${d.color}"></div><div class="n">${d.name}</div><div class="c">${d.car}</div></button>`).join("");
+  $("#pickmsg").textContent = m.ready ? "✔ Bereit! Warte auf die anderen…" : "Tippe auf deinen Fahrer.";
+  if (m.mine) { const d = m.drivers.find(x => x.id === m.mine); if (d) document.documentElement.style.setProperty("--me", d.color); }
+}
+$("#drivers").addEventListener("click", e => { const b = e.target.closest("[data-d]"); if (b && conn) { tick(true); conn.send({ t: "pick", driver: b.dataset.d }); } });
+$("#pStart").addEventListener("click", () => { if (!conn) return; held.start = true; send(true); setTimeout(() => { held.start = false; send(true); }, 150); });
+
+// ---- Oberflaeche
+function applyUI(){
+  document.body.classList.toggle("tilt", S.tilt && motionOk);
+  document.body.classList.toggle("autogas", S.autogas);
+  for (const [id, k] of [["#tTilt", "tilt"], ["#tInv", "inv"], ["#tGas", "autogas"], ["#tVib", "vib"]]) $(id).classList.toggle("on", !!S[k]);
+  $("#sens").value = S.sens; $("#sensv").textContent = S.sens + "°";
+  $("#vibinfo").textContent = navigator.vibrate ? "Rüttelt bei Treffern" : isIOS ? "iPhone: kurze Klicks (ab iOS 18)" : "nicht verfügbar";
+  requestAnimationFrame(idle);
+}
+function set(k, v){ S[k] = v; store.set(k, v); applyUI(); }
+$("#tTilt").onclick = async () => { if (!S.tilt) { if (!(await enableMotion())) return; set("tilt", true); setTimeout(calibrate, 200); } else set("tilt", false); };
+$("#tInv").onclick = () => set("inv", !S.inv);
+$("#tGas").onclick = () => set("autogas", !S.autogas);
+$("#tVib").onclick = () => { set("vib", !S.vib); tick(true); };
+$("#sens").oninput = e => set("sens", +e.target.value);
+$("#center").onclick = () => { calibrate(); tick(true); };
+$("#gear").onclick = () => $("#sheet").classList.add("open");
+$("#close").onclick = () => $("#sheet").classList.remove("open");
+
+const qs = new URLSearchParams(location.search);
+$("#code").value = (qs.get("r") || store.get("code", "")).toUpperCase();
+$("#name").value = store.get("name", "");
+$("#go").onclick = async () => {
+  store.set("name", $("#name").value.trim().slice(0, 14));
+  store.set("code", $("#code").value.trim().toUpperCase());
+  tick(true);
+  if (S.tilt) { await enableMotion(); setTimeout(calibrate, 300); }
+  joined = true; applyUI(); connect();
+};
+applyUI();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && joined && (!conn || !conn.open)) connect(); });
+</script>
+</body>
+</html>
