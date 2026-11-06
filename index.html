@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DS-Kart</title>
+<meta name="description" content="DS-Kart – Danke Sonja Kart. Fun-Racer mit Schemmerhofen, Mäcces Biberach und dem Alberweiler Baggersee. Handys sind die Controller.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap" rel="stylesheet">
+<style>
+:root{--y:#ffd23a;--r:#e8412f;--b:#1d3a6e;--ink:#101622;--paper:#fffaf0}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#0d1320;color:#fff;font:16px/1.3 "Segoe UI",system-ui,sans-serif}
+#gl,#hud{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{pointer-events:none}
+.screen{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;padding:24px;
+  background:radial-gradient(1200px 600px at 50% 20%,#2a5fa8 0%,#173465 45%,#0d1a33 100%)}
+.screen.on{display:flex}
+.screen::before{content:"";position:absolute;inset:0;opacity:.12;pointer-events:none;
+  background:repeating-linear-gradient(115deg,#fff 0 22px,transparent 22px 64px);animation:slide 8s linear infinite}
+@keyframes slide{to{background-position:300px 0}}
+.screen > *{position:relative}
+.logo{font-family:"Lilita One","Arial Black",sans-serif;font-size:clamp(64px,14vw,190px);line-height:.9;color:var(--y);letter-spacing:2px;
+  transform:skew(-8deg);text-shadow:0 6px 0 #c2410c,0 12px 0 #7a1f0a,0 18px 30px rgba(0,0,0,.5);-webkit-text-stroke:3px #7a1f0a}
+.logo span{color:#fff;-webkit-text-stroke:3px #1d3a6e;text-shadow:0 6px 0 #1d3a6e,0 12px 0 #0d1a33,0 18px 30px rgba(0,0,0,.5)}
+.sub{font-family:"Lilita One",sans-serif;font-size:clamp(20px,3vw,34px);margin-top:18px;color:#fff;letter-spacing:1px}
+.blink{margin-top:44px;font-family:"Lilita One",sans-serif;font-size:26px;animation:bl 1.2s ease-in-out infinite;color:var(--y)}
+@keyframes bl{50%{opacity:.25}}
+.credit{position:absolute!important;bottom:12px;left:0;right:0;text-align:center;font-size:12px;color:#9fb3d1}
+h2{font-family:"Lilita One",sans-serif;font-size:44px;margin:0 0 18px;color:var(--y);text-shadow:0 4px 0 #7a1f0a;transform:skew(-6deg)}
+.row{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}
+.panel{background:rgba(8,14,28,.72);border:3px solid rgba(255,255,255,.18);border-radius:22px;padding:18px}
+#join{display:flex;gap:18px;align-items:center}
+#qr{background:#fff;border-radius:14px;padding:10px;width:190px;height:190px}
+#qr svg{width:100%;height:100%}
+.code{font-family:"Lilita One",sans-serif;font-size:58px;letter-spacing:8px;color:var(--y)}
+.small{font-size:13px;color:#b9c8de}
+.slots{display:grid;grid-template-columns:repeat(4,minmax(150px,210px));gap:14px;margin-top:18px}
+@media(max-width:900px){.slots{grid-template-columns:repeat(2,minmax(140px,1fr))}}
+.slot{border-radius:18px;padding:12px;min-height:200px;background:rgba(255,255,255,.07);border:3px dashed rgba(255,255,255,.25);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px}
+.slot.on{border-style:solid;background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.04))}
+.slot.ready{border-color:#6aff7a;box-shadow:0 0 0 3px rgba(106,255,122,.25)}
+.slot .p{font-family:"Lilita One",sans-serif;font-size:22px}
+.slot .nm{font-family:"Lilita One",sans-serif;font-size:30px}
+.slot .car{font-size:14px;color:#dfe8f4}
+.slot .dev{font-size:12px;color:#9fb3d1}
+.swatch{width:84px;height:46px;border-radius:12px;border:3px solid rgba(0,0,0,.3);position:relative}
+.swatch::after{content:"";position:absolute;left:10px;right:10px;top:-14px;height:18px;border-radius:8px 8px 0 0;background:inherit;filter:brightness(.85)}
+.arrows{font-size:13px;color:var(--y)}
+.btn{font-family:"Lilita One",sans-serif;font-size:24px;padding:12px 26px;border-radius:16px;border:0;background:#2e4d80;color:#fff;cursor:pointer;
+  box-shadow:0 5px 0 #0d1a33;transition:transform .08s}
+.btn.focus,.btn:hover{background:var(--y);color:#3a1a05;box-shadow:0 5px 0 #a8650a;transform:translateY(-2px) scale(1.04)}
+.btn.sel{outline:4px solid #fff}
+.cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.card{width:250px;border-radius:20px;padding:16px;background:rgba(8,14,28,.75);border:4px solid rgba(255,255,255,.15);cursor:pointer;transition:transform .1s}
+.card .t{font-family:"Lilita One",sans-serif;font-size:28px}
+.card .s{font-size:13px;color:#c9d6ea;margin-top:4px}
+.card .stripe{height:10px;border-radius:5px;margin-bottom:12px}
+.card.sel{border-color:#fff}
+.card.focus{transform:scale(1.06);border-color:var(--y);box-shadow:0 0 0 4px rgba(255,210,58,.3)}
+.label{font-family:"Lilita One",sans-serif;font-size:20px;margin:18px 0 8px;color:#dfe8f4}
+table.res{border-collapse:collapse;font-size:20px;min-width:min(720px,90vw)}
+table.res td{padding:8px 14px;border-bottom:1px solid rgba(255,255,255,.12)}
+table.res tr.me td{background:rgba(255,210,58,.12)}
+table.res td.pl{font-family:"Lilita One",sans-serif;font-size:30px;width:60px}
+.dot{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:8px;vertical-align:middle}
+#pause{background:rgba(5,10,20,.7)}
+#pause::before{display:none}
+#netst{position:fixed;right:10px;bottom:8px;font-size:12px;color:#9fb3d1;z-index:50}
+#loading{font-family:"Lilita One",sans-serif;font-size:40px}
+.hint{font-size:14px;color:#c9d6ea;margin-top:14px;text-align:center;max-width:900px}
+kbd{background:#fff;color:#111;border-radius:5px;padding:1px 6px;font-size:12px;font-weight:700}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="hud"></canvas>
+
+<div class="screen on" id="s-title">
+  <div class="logo">DS<span>-</span>KART</div>
+  <div class="sub">Danke Sonja Kart</div>
+  <div class="blink">Drück irgendwas!</div>
+  <div class="credit">Strecken nach echten Straßen · Kartendaten © OpenStreetMap-Mitwirkende (ODbL) · Fan-Projekt, keine Verbindung zu irgendwelchen Firmen</div>
+</div>
+
+<div class="screen" id="s-lobby">
+  <h2>Wer fährt mit?</h2>
+  <div class="row">
+    <div class="panel" id="join">
+      <div id="qr"></div>
+      <div>
+        <div class="small">Handy: QR scannen oder öffnen</div>
+        <div id="joinurl" class="small" style="word-break:break-all;max-width:260px"></div>
+        <div class="small" style="margin-top:8px">Raum-Code</div>
+        <div class="code" id="code">····</div>
+        <div class="small" id="netmsg"></div>
+      </div>
+    </div>
+  </div>
+  <div class="slots" id="slots"></div>
+  <div class="hint">Mitmachen: <kbd>Leertaste</kbd> (WASD) · <kbd>Shift rechts</kbd> (Pfeile) · Controller <kbd>A</kbd> · Handy über QR.
+    Fahrer wechseln: links/rechts · bestätigen: nochmal drücken · raus: <kbd>Esc</kbd>/<kbd>B</kbd></div>
+  <div style="margin-top:16px"><button class="btn" id="toSetup">Weiter ▶</button></div>
+</div>
+
+<div class="screen" id="s-setup">
+  <h2>Strecke</h2>
+  <div class="cards" id="trackCards"></div>
+  <div class="label">Hubraum</div>
+  <div class="row" id="clsBtns"></div>
+  <div class="label">Runden</div>
+  <div class="row" id="lapBtns"></div>
+  <div style="margin-top:22px"><button class="btn" id="go">Los geht's! 🏁</button></div>
+</div>
+
+<div class="screen" id="s-load"><div id="loading">Lade Strecke…</div></div>
+
+<div class="screen" id="s-results">
+  <h2 id="resTitle">Ergebnis</h2>
+  <div class="panel"><table class="res" id="resTable"></table></div>
+  <div class="row" style="margin-top:20px" id="resBtns"></div>
+</div>
+
+<div class="screen" id="pause">
+  <h2>Pause</h2>
+  <div class="row" id="pauseBtns"></div>
+</div>
+
+<div id="netst"></div>
+
+<script src="vendor/peerjs.min.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
