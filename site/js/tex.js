@@ -26,10 +26,23 @@ function noise(g, w, h, n, colors, rmin, rmax) {
 const cache = {};
 export const T = {
   asphalt() {
-    return cache.asphalt ||= tex(canvas(256, 256, (g, w, h) => {
-      g.fillStyle = "#5d5f63"; g.fillRect(0, 0, w, h);
-      noise(g, w, h, 2600, ["#4f5155", "#6a6c70", "#55575b", "#727478"], 0.6, 2.2);
+    return cache.asphalt ||= tex(canvas(512, 512, (g, w, h) => {
+      g.fillStyle = "#56595e"; g.fillRect(0, 0, w, h);
+      // grosse, weiche Flecken (Ausbesserungen, Abnutzung)
+      for (let i = 0; i < 26; i++) { const x = Math.random() * w, y = Math.random() * h, r = 30 + Math.random() * 90; const gr = g.createRadialGradient(x, y, 2, x, y, r); gr.addColorStop(0, Math.random() < 0.5 ? "rgba(40,42,46,0.18)" : "rgba(120,122,126,0.12)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
+      // feine Koernung
+      noise(g, w, h, 16000, ["#45484c", "#6d7075", "#4e5155", "#7b7e83", "#3d4044"], 0.5, 1.4);
+      // helle Steinchen
+      for (let i = 0; i < 1400; i++) { g.fillStyle = `rgba(200,200,205,${0.15 + Math.random() * 0.3})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 1); }
+      // Fahrspuren (leicht dunkler)
+      for (const x of [w * 0.3, w * 0.7]) { const gr = g.createLinearGradient(x - 40, 0, x + 40, 0); gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(0.5, "rgba(20,22,26,0.14)"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; g.fillRect(x - 40, 0, 80, h); }
     }));
+  },
+  asphaltRough() {
+    return cache.asphaltRough ||= (() => { const t = tex(canvas(256, 256, (g, w, h) => {
+      g.fillStyle = "#c8c8c8"; g.fillRect(0, 0, w, h);
+      noise(g, w, h, 5000, ["#8a8a8a", "#e8e8e8", "#a0a0a0"], 0.5, 2);
+    })); t.colorSpace = THREE.NoColorSpace; return t; })();
   },
   grass() {
     return cache.grass ||= tex(canvas(256, 256, (g, w, h) => {

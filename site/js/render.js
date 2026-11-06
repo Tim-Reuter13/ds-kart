@@ -16,8 +16,8 @@ export const QUALITY = {
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
-    saturation: { value: 1.2 },
-    contrast: { value: 1.06 },
+    saturation: { value: 1.22 },
+    contrast: { value: 1.12 },
     warm: { value: new THREE.Vector3(1.04, 1.0, 0.95) },
     vignette: { value: 0.32 },
   },
@@ -68,7 +68,7 @@ export class Pipeline {
     this.composer = new EffectComposer(r, rt);
     this.views = new ViewsPass();
     this.composer.addPass(this.views);
-    if (q.bloom) { this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.32, 0.45, 0.88); this.composer.addPass(this.bloom); }
+    if (q.bloom) { this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.5, 1.05); this.composer.addPass(this.bloom); }
     this.grade = new ShaderPass(GradeShader);
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());

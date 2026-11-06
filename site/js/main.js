@@ -9,7 +9,7 @@ import { CLASSES } from "./kart.js";
 import { TRACKS } from "./tracks.js";
 import { RoomEnvironment } from "../vendor/RoomEnvironment.js";
 import { initAudioUI } from "./audioui.js";
-import { Pipeline } from "./render.js";
+import { Pipeline, QUALITY } from "./render.js";
 
 const $ = (s) => document.querySelector(s);
 const renderer = new THREE.WebGLRenderer({ canvas: $("#gl"), antialias: true, powerPreference: "high-performance" });
@@ -134,11 +134,14 @@ function renderSetup() {
   const cls = Object.entries(CLASSES);
   $("#clsBtns").innerHTML = cls.map(([k, c], i) => `<button class="btn ${state.cls === k ? "sel" : ""} ${f.row === 1 && f.col === i ? "focus" : ""}" data-c="${k}">${c.name} <span style="font-size:14px">(${c.sub})</span></button>`).join("");
   $("#lapBtns").innerHTML = [2, 3, 5].map((n, i) => `<button class="btn ${state.laps === n ? "sel" : ""} ${f.row === 2 && f.col === i ? "focus" : ""}" data-l="${n}">${n}</button>`).join("");
-  $("#go").classList.toggle("focus", f.row === 3);
+  const ql = Object.keys(QUALITY);
+  $("#qBtns").innerHTML = ql.map((k, i) => `<button class="btn ${pipeline.level === k ? "sel" : ""} ${f.row === 3 && f.col === i ? "focus" : ""}" data-q="${k}">${QUALITY[k].name}</button>`).join("");
+  $("#go").classList.toggle("focus", f.row === 4);
 }
 $("#trackCards").addEventListener("click", e => { const c = e.target.closest("[data-t]"); if (c) { state.track = +c.dataset.t; state.focus = { row: 0, col: state.track }; renderSetup(); } });
 $("#clsBtns").addEventListener("click", e => { const c = e.target.closest("[data-c]"); if (c) { state.cls = c.dataset.c; renderSetup(); } });
 $("#lapBtns").addEventListener("click", e => { const c = e.target.closest("[data-l]"); if (c) { state.laps = +c.dataset.l; renderSetup(); } });
+$("#qBtns").addEventListener("click", e => { const c = e.target.closest("[data-q]"); if (c) { pipeline.setLevel(c.dataset.q); renderSetup(); } });
 $("#go").onclick = () => startRace();
 $("#toSetup").onclick = () => toSetup();
 $("#toAudio").onclick = () => audioUI.open("lobby");
@@ -214,17 +217,18 @@ function menuInput() {
       }
     } else if (state.screen === "setup") {
       const f = state.focus;
-      const rowLen = [TRACKS.length, 3, 3, 1];
+      const rowLen = [TRACKS.length, 3, 3, 4, 1];
       if (e.up) { f.row = Math.max(0, f.row - 1); f.col = Math.min(f.col, rowLen[f.row] - 1); audio.sfx("select"); }
-      if (e.down) { f.row = Math.min(3, f.row + 1); f.col = Math.min(f.col, rowLen[f.row] - 1); audio.sfx("select"); }
+      if (e.down) { f.row = Math.min(4, f.row + 1); f.col = Math.min(f.col, rowLen[f.row] - 1); audio.sfx("select"); }
       if (e.left) { f.col = Math.max(0, f.col - 1); audio.sfx("select"); }
       if (e.right) { f.col = Math.min(rowLen[f.row] - 1, f.col + 1); audio.sfx("select"); }
       if (e.left || e.right || e.up || e.down) {
         if (f.row === 0) state.track = f.col;
         if (f.row === 1) state.cls = Object.keys(CLASSES)[f.col];
         if (f.row === 2) state.laps = [2, 3, 5][f.col];
+        if (f.row === 3 && (e.left || e.right)) pipeline.setLevel(Object.keys(QUALITY)[f.col]);
       }
-      if (e.ok || e.start) { if (f.row === 3 || e.start) { startRace(); return; } f.row++; f.col = 0; audio.sfx("confirm"); }
+      if (e.ok || e.start) { if (f.row === 4 || e.start) { startRace(); return; } f.row++; f.col = 0; audio.sfx("confirm"); }
       if (e.cancel) { for (const p of state.players) if (!p.dev.startsWith("ph")) p.ready = false; show("lobby"); renderLobby(); return; }
       renderSetup();
     } else if (state.screen === "audio") {

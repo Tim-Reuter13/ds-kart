@@ -63,7 +63,7 @@ export class Race {
     this.scene = new THREE.Scene();
     this.scene.environment = window.__env || null;
     this.scene.environmentIntensity = 0.55;
-    this.scene.fog = new THREE.Fog(def.fog || "#d3e8f4", 220, 1300);
+    this.scene.fog = new THREE.Fog(def.fog || "#a9d0ee", 260, 1400);
     this.scene.add(new THREE.HemisphereLight("#dcecff", "#7a8a5a", 1.15));
     const sun = new THREE.DirectionalLight("#fff1d6", 2.6);
     sun.castShadow = true;
