@@ -114,6 +114,8 @@ export class Race {
     this.beeped = 5;
   }
 
+  nearHuman(r, d) { return this.humans.some(h => (h.x - r.x) ** 2 + (h.z - r.z) ** 2 < d * d); }
+
   aiScale(r) {
     if (!this.humans.length) return 1;
     let best = -1e9; for (const h of this.humans) best = Math.max(best, h.total);
@@ -149,6 +151,7 @@ export class Race {
       }
       if (this.countdown <= 0) {
         this.started = true; this.time = 0; this.sfx("go");
+        this.humans.forEach((h, i) => setTimeout(() => this.audio.voice(h.driver.id, "start"), 300 + i * 420));
         for (const h of this.humans) {
           const t0 = this.rocket.get(h);
           if (t0 !== undefined && t0 < 1.6 && t0 > 0.6) { h.boost(1.0); this.hud.message(h, "Raketenstart!", 1.2, "#6aff7a"); }
@@ -184,9 +187,13 @@ export class Race {
       else { a.speed *= 0.985; b.speed *= 0.985; if (a.human) a.events.push({ t: "bump" }); if (b.human) b.events.push({ t: "bump" }); }
     }
 
-    // Platzierungen
+    // Platzierungen (+ Ueberhol-Spruch fuer Spieler)
     const sorted = this.racers.slice().sort((a, b) => b.progress() - a.progress());
-    sorted.forEach((r, i) => r.place = i + 1);
+    sorted.forEach((r, i) => {
+      const np = i + 1;
+      if (r.human && this.started && !r.finished && r.place && np < r.place && this.time > 4 && (r.voiceT || 0) < this.time) { r.voiceT = this.time + 6; this.audio.voice(r.driver.id, "overtake"); }
+      r.place = np;
+    });
     this.items.update(dt, this.time);
     this.effects(dt);
     this.handleEvents();
@@ -229,7 +236,7 @@ export class Race {
         const hum = r.human;
         if (hum && RUMBLE[e.t] && r.dev?.startsWith("ph")) this.net.send(r.dev, { t: "rumble", ms: RUMBLE[e.t] });
         switch (e.t) {
-          case "hit": if (hum) { this.sfx("hit"); this.hud.message(r, pick(MSG.hit), 1.4, "#ffb0a0"); } break;
+          case "hit": if (hum) { this.sfx("hit"); this.hud.message(r, pick(MSG.hit), 1.4, "#ffb0a0"); this.audio.voice(r.driver.id, "hit"); } else if (this.nearHuman(r, 45) && Math.random() < 0.4) this.audio.voice(r.driver.id, "hit"); break;
           case "wall": if (hum) this.sfx("wall"); break;
           case "box": if (hum) this.sfx("box"); break;
           case "got": if (hum) this.sfx("got"); break;
@@ -237,18 +244,18 @@ export class Race {
           case "spark": if (hum) this.sfx("spark"); break;
           case "pfand": if (hum) { this.sfx("pfand"); if (r.pfand === 10) this.hud.message(r, MSG.pfandFull[0], 1.5, "#ffd23a"); } break;
           case "flash": if (hum) this.hud.message(r, pick(MSG.flash), 2, "#ffffff"); break;
-          case "camera": this.sfx("camera"); if (hum) this.hud.message(r, "📸 Blitzer aufgestellt!", 1.5, "#ffd23a"); break;
+          case "camera": this.sfx("camera"); if (hum) this.audio.voice(r.driver.id, "item"); if (hum) this.hud.message(r, "📸 Blitzer aufgestellt!", 1.5, "#ffd23a"); break;
           case "blind": if (hum) { this.sfx("blind"); this.hud.message(r, pick(MSG.blind), 1.6, "#eef2ff"); } break;
           case "vape": this.sfx("vape"); break;
           case "kontrolle": if (hum) this.hud.message(r, pick(MSG.kontrolle), 2.2, "#7fb0ff"); break;
           case "siren": this.sfx("siren"); break;
           case "doener": if (hum) { this.sfx("doener"); this.hud.message(r, pick(MSG.doener), 1.4, "#ffd23a"); } break;
           case "lighter": if (hum) this.sfx("lighter"); break;
-          case "throw": if (hum) this.sfx("throw"); break;
-          case "drop": if (hum) this.sfx("drop"); break;
+          case "throw": if (hum) { this.sfx("throw"); this.audio.voice(r.driver.id, "item"); } break;
+          case "drop": if (hum) { this.sfx("drop"); this.audio.voice(r.driver.id, "item"); } break;
           case "splash": if (hum) this.sfx("splash"); break;
           case "trick": if (hum) this.sfx("trick"); break;
-          case "finish": if (hum) { this.sfx("finish"); } break;
+          case "finish": if (hum) { this.sfx("finish"); const d = r.driver.id, w = r.place <= 3; setTimeout(() => this.audio.voice(d, w ? "win" : "lose"), 700); } break;
         }
       }
       r.events.length = 0;
@@ -321,7 +328,7 @@ export class Race {
     });
     rd.setScissorTest(false);
     this.hud.draw(this, hv, dt);
-    for (const h of this.humans) this.audio.engine(h.id, h.speed, h.boostT > 0, this.started || this.countdown < 3.5);
+    for (const h of this.humans) this.audio.engine(h.id, h.speed, h.boostT > 0, this.started || this.countdown < 3.5, h.driver.id);
   }
 
   results() {

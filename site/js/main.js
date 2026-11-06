@@ -8,6 +8,7 @@ import { DRIVERS } from "./cars.js";
 import { CLASSES } from "./kart.js";
 import { TRACKS } from "./tracks.js";
 import { RoomEnvironment } from "../vendor/RoomEnvironment.js";
+import { initAudioUI } from "./audioui.js";
 
 const $ = (s) => document.querySelector(s);
 const renderer = new THREE.WebGLRenderer({ canvas: $("#gl"), antialias: true, powerPreference: "high-performance" });
@@ -24,6 +25,7 @@ const hud = new HUD(hudCanvas);
 const audio = new Audio();
 const net = new Net();
 const inputs = new Inputs(net);
+let audioUI = null;
 
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
@@ -64,7 +66,7 @@ net.on("join", (id) => {
     if (state.players.length >= 4 || state.screen === "race") { net.send(id, { t: "full" }); }
     else { addPlayer(id); }
   }
-  net.send(id, { t: "mode", m: state.screen === "race" ? "race" : state.screen === "lobby" ? "pick" : "menu" });
+  if (!(audioUI && audioUI.isRecording())) net.send(id, { t: "mode", m: state.screen === "race" ? "race" : state.screen === "lobby" ? "pick" : "menu" });
   sendLobby();
 });
 net.on("leave", (id) => {
@@ -135,6 +137,7 @@ $("#clsBtns").addEventListener("click", e => { const c = e.target.closest("[data
 $("#lapBtns").addEventListener("click", e => { const c = e.target.closest("[data-l]"); if (c) { state.laps = +c.dataset.l; renderSetup(); } });
 $("#go").onclick = () => startRace();
 $("#toSetup").onclick = () => toSetup();
+$("#toAudio").onclick = () => audioUI.open("lobby");
 
 function toSetup() {
   if (!state.players.length) { addPlayer("kb1"); state.players[0].ready = true; }
@@ -220,6 +223,8 @@ function menuInput() {
       if (e.ok || e.start) { if (f.row === 3 || e.start) { startRace(); return; } f.row++; f.col = 0; audio.sfx("confirm"); }
       if (e.cancel) { for (const p of state.players) if (!p.dev.startsWith("ph")) p.ready = false; show("lobby"); renderLobby(); return; }
       renderSetup();
+    } else if (state.screen === "audio") {
+      if (e.cancel && !audioUI.isRecording()) { $("#aBack").click(); return; }
     } else if (state.screen === "race") {
       if (e.start && !dev.startsWith("kb")) { pause(); return; }
     } else if (state.screen === "pause" || state.screen === "results") {
@@ -238,6 +243,8 @@ addEventListener("keydown", (e) => {
   else if (e.code === "Escape" && state.screen === "pause") resume();
 });
 $("#s-title").addEventListener("click", () => { audio.ensure(); net.start(); show("lobby"); renderLobby(); });
+
+audioUI = initAudioUI({ audio, net, show: (id) => { show(id); if (id === "lobby") renderLobby(); } });
 
 // ---------------- Schleife
 let last = performance.now();
@@ -272,4 +279,11 @@ if (qs.has("at")) {
     h.place_on_grid(r.track, parseFloat(qs.get("at")) * r.track.L, 0);
     h.total = 0; r.countdown = 0.01;
   }, 50);
+}
+
+// Titelbild: echtes Logo, falls vorhanden (sonst Text-Logo)
+{
+  const img = document.querySelector("#logoImg");
+  const ok = () => { document.querySelector("#s-title").classList.add("hasLogo"); document.querySelector(".logoWrap").style.setProperty("--logo-mask", `url(${img.src}) center/contain no-repeat`); };
+  if (img.complete && img.naturalWidth) ok(); else img.addEventListener("load", ok);
 }

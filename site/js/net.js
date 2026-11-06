@@ -68,6 +68,10 @@ export class Net {
         const st = { steer: Math.max(-1, Math.min(1, +m.x || 0)) };
         BITS.forEach((k, i) => st[k] = !!(m.b & (1 << i)));
         ph.state = st; ph.lastSeen = performance.now();
+      } else if (m.t === "clip") {
+        this.emit("clip", ph.id, m);
+      } else if (m.t === "recCancel") {
+        this.emit("recCancel", ph.id);
       } else if (m.t === "pick") {
         this.emit("pick", ph.id, m.driver);
       } else if (m.t === "p") {

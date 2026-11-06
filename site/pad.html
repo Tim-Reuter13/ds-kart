@@ -84,6 +84,19 @@ input[type=range]{width:170px;padding:0}
 #rot b{font-size:60px}
 @media (orientation:portrait){body.racing #rot{display:flex}}
 #hap{position:fixed;left:-300px;top:0;opacity:0;pointer-events:none}
+/* Aufnahme */
+#s-rec{align-items:center;justify-content:center}
+#s-rec .card{width:min(560px,100%);display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+#recWho{color:var(--y);font-weight:800}
+#recTitle{font-size:28px;font-weight:900}
+#recBtn{width:132px;height:132px;border-radius:50%;border:0;background:#c0392b;color:#fff;font-size:46px;box-shadow:0 7px 0 #6a1a12;margin:8px 0}
+#recBtn.live{animation:pulse 1s infinite}
+@keyframes pulse{50%{transform:scale(1.07);background:#ff4a3a}}
+#recBar{width:100%;height:10px;border-radius:5px;background:#20365f;overflow:hidden}#recBar i{display:block;height:100%;width:0;background:#ff4a3a}
+.rrow{display:flex;gap:10px;width:100%}
+.rrow button{flex:1;padding:16px;border-radius:14px;border:0;font-size:18px;font-weight:900;background:var(--panel)}
+.rrow button:disabled{opacity:.35}
+#recSend{background:#3f8f4f}
 </style>
 </head>
 <body>
@@ -148,6 +161,18 @@ input[type=range]{width:170px;padding:0}
   <div class="rowx"><div>Linkshänder<small>Joystick rechts, Tasten links</small></div><button class="tog" id="tLefty"></button></div>
   <button class="go" id="close" style="width:100%;margin-top:10px">Fertig</button>
 </div></div>
+<div class="scr" id="s-rec">
+  <div class="card">
+    <div id="recWho"></div>
+    <div id="recTitle"></div>
+    <div class="hint" id="recDesc"></div>
+    <button id="recBtn">●</button>
+    <div id="recBar"><i></i></div>
+    <div class="hint" id="recMsg">Tippen = Aufnahme starten, nochmal tippen = stoppen.</div>
+    <div class="rrow"><button id="recPlay" disabled>▶ Anhören</button><button id="recSend" disabled>✔ Senden</button></div>
+    <div class="rrow"><button id="recCancel">Abbrechen</button></div>
+  </div>
+</div>
 <div id="rot"><b>📱↻</b>Handy quer halten</div>
 <label id="hap"><input type="checkbox" switch></label>
 
@@ -211,7 +236,7 @@ document.addEventListener("pointermove", e => {
 });
 const up = e => { if (ptr.delete(e.pointerId)) recompute(); };
 document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
-document.addEventListener("touchstart", e => { if (!e.target.closest("#sheet,#s-join,#s-pick")) e.preventDefault(); }, { passive: false });
+document.addEventListener("touchstart", e => { if (!e.target.closest("#sheet,#s-join,#s-pick,#s-rec")) e.preventDefault(); }, { passive: false });
 document.addEventListener("gesturestart", e => e.preventDefault());
 document.addEventListener("contextmenu", e => e.preventDefault());
 
@@ -284,6 +309,8 @@ function onMsg(m){
   }
   else if (m.t === "rumble") rumble(m.ms);
   else if (m.t === "full") $("#jmsg").textContent = "Schon 4 Spieler drin.";
+  else if (m.t === "rec") startRecScreen(m);
+  else if (m.t === "recEnd") { stopRecTimer(); if (mode === "rec") show(prevMode || "menu"); }
 }
 function renderPick(m){
   $("#drivers").innerHTML = m.drivers.map(d => `<button class="drv ${d.id === m.mine ? "mine" : ""} ${d.taken ? "taken" : ""}" data-d="${d.id}" ${d.taken ? "disabled" : ""}>
@@ -293,6 +320,49 @@ function renderPick(m){
 }
 $("#drivers").addEventListener("click", e => { const b = e.target.closest("[data-d]"); if (b && conn) { tick(true); conn.send({ t: "pick", driver: b.dataset.d }); } });
 $("#pStart").addEventListener("click", () => { if (!conn) return; held.start = true; send(true); setTimeout(() => { held.start = false; send(true); }, 150); });
+
+// ---- Aufnahme fuer das Audio-Profil (Handy-Mikro)
+let recJob = null, recStream = null, mr = null, recBlob = null, recTimer = null, prevMode = null;
+function stopRecTimer(){ if (recTimer) clearInterval(recTimer); recTimer = null; if (mr && mr.state === "recording") mr.stop(); }
+function startRecScreen(m){
+  recJob = m; recBlob = null; if (mode !== "rec") prevMode = mode;
+  $("#recWho").textContent = m.who ? "Stimme von " + m.who : "Geräusch";
+  $("#recTitle").textContent = m.title; $("#recDesc").textContent = m.desc;
+  $("#recPlay").disabled = true; $("#recSend").disabled = true; $("#recBar i").style.width = "0%";
+  $("#recMsg").textContent = "Tippen = Aufnahme starten, nochmal tippen = stoppen. Max. " + m.max + " Sek.";
+  show("rec"); document.body.classList.remove("racing");
+}
+$("#recBtn").addEventListener("click", async () => {
+  if (mr && mr.state === "recording") { mr.stop(); return; }
+  try {
+    recStream ||= await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true } });
+  } catch (e) { $("#recMsg").textContent = "Mikrofon nicht erlaubt: " + e.message + " – in den Einstellungen für Safari erlauben."; return; }
+  const types = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/aac"];
+  const mime = types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+  const chunks = [];
+  mr = mime ? new MediaRecorder(recStream, { mimeType: mime }) : new MediaRecorder(recStream);
+  mr.ondataavailable = ev => ev.data.size && chunks.push(ev.data);
+  mr.onstop = () => {
+    if (recTimer) clearInterval(recTimer); recTimer = null;
+    $("#recBtn").classList.remove("live"); $("#recBtn").textContent = "●";
+    recBlob = new Blob(chunks, { type: mr.mimeType || mime || "audio/mp4" });
+    $("#recPlay").disabled = false; $("#recSend").disabled = false;
+    $("#recMsg").textContent = "Fertig. Anhören, senden – oder nochmal ● für eine neue Aufnahme.";
+  };
+  mr.start(100);
+  tick(true);
+  $("#recBtn").classList.add("live"); $("#recBtn").textContent = "■";
+  const t0 = performance.now(), max = (recJob?.max || 4) * 1000;
+  recTimer = setInterval(() => { const p = (performance.now() - t0) / max; $("#recBar i").style.width = Math.min(100, p * 100) + "%"; if (p >= 1 && mr.state === "recording") mr.stop(); }, 50);
+});
+$("#recPlay").onclick = () => { if (recBlob) new Audio(URL.createObjectURL(recBlob)).play(); };
+$("#recSend").onclick = async () => {
+  if (!recBlob || !conn || !recJob) return;
+  $("#recMsg").textContent = "Sende …"; $("#recSend").disabled = true;
+  try { conn.send({ t: "clip", id: recJob.id, mime: recBlob.type, data: await recBlob.arrayBuffer() }); $("#recMsg").textContent = "✔ Gesendet!"; tick(true); }
+  catch (e) { $("#recMsg").textContent = "Senden fehlgeschlagen: " + e.message; $("#recSend").disabled = false; }
+};
+$("#recCancel").onclick = () => { stopRecTimer(); if (conn) conn.send({ t: "recCancel" }); show(prevMode || "menu"); };
 
 // ---- Einstellungen
 function applyUI(){
