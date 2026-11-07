@@ -102,7 +102,7 @@ export class Race {
     // Fahrer
     this.racers = [];
     const taken = new Set(players.map(p => p.driver));
-    // Feld max. 8: Foto-Fahrer sind immer dabei, von den uebrigen setzt reihum zufaellig einer aus
+    // Feld max. 8: Foto-Fahrer zuerst (seit es 8 gibt, faehrt immer genau diese Truppe)
     const free = DRIVERS.filter(d => !taken.has(d.id));
     const cpus = [...free.filter(d => sprites[d.id]), ...free.filter(d => !sprites[d.id]).sort(() => Math.random() - 0.5)]
       .slice(0, Math.max(0, 8 - players.length)).sort((a, b) => DRIVERS.indexOf(a) - DRIVERS.indexOf(b));
