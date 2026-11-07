@@ -17,14 +17,17 @@ export const ITEMS = {
 if (FAMILY) for (const k in FAMILY_ITEMS) Object.assign(ITEMS[k], FAMILY_ITEMS[k]);
 export const ROULETTE = Object.keys(ITEMS).filter(k => k !== "pack");
 
-// Gewichte: vorne (t=0) .. hinten (t=1)
-const W_FRONT = { kippe: 30, jaegi: 24, kasten: 24, vape: 12, energy: 8, kurze: 2, doener: 0, blitzer: 0, amt: 0 };
-const W_BACK = { kippe: 4, jaegi: 6, kasten: 2, vape: 10, energy: 16, kurze: 22, doener: 18, blitzer: 10, amt: 12 };
+// Gewichte: vorne (t=0) .. Mitte (t=0.5) .. ganz hinten (t=1). Hinten gibt es die starken Sachen.
+const W_FRONT = { kippe: 32, jaegi: 26, kasten: 26, vape: 3, energy: 10, kurze: 3, doener: 0, blitzer: 0, amt: 0 };
+const W_MID = { kippe: 12, jaegi: 18, kasten: 8, vape: 14, energy: 18, kurze: 14, doener: 8, blitzer: 3, amt: 5 };
+const W_BACK = { kippe: 0, jaegi: 4, kasten: 0, vape: 8, energy: 10, kurze: 24, doener: 24, blitzer: 12, amt: 18 };
 
 export function rollItem(t) {
   const w = {};
   let sum = 0;
-  for (const k of Object.keys(W_FRONT)) { w[k] = W_FRONT[k] * (1 - t) + W_BACK[k] * t; sum += w[k]; }
+  t = Math.pow(Math.max(0, Math.min(1, t)), 0.85);
+  const [A, B, u] = t < 0.5 ? [W_FRONT, W_MID, t * 2] : [W_MID, W_BACK, (t - 0.5) * 2];
+  for (const k of Object.keys(W_FRONT)) { w[k] = A[k] * (1 - u) + B[k] * u; sum += w[k]; }
   let r = Math.random() * sum;
   for (const k in w) { r -= w[k]; if (r <= 0) return k; }
   return "energy";
@@ -130,7 +133,8 @@ export class Items {
   give(r) {
     if (r.item || r.roulette > 0) return;
     const n = this.race.racers.length;
-    const t = n > 1 ? (r.place - 1) / (n - 1) : 0;
+    // Platz + Aufholbonus (wer weit zurueck ist, zieht wie der Letzte)
+    const t = Math.max(n > 1 ? (r.place - 1) / (n - 1) : 0, r.cu || 0);
     r.pending = rollItem(t);
     r.roulette = r.human ? 1.6 : 0.8;
     r.events.push({ t: "box" });

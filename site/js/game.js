@@ -23,6 +23,16 @@ const MSG = {
 };
 const pick = (a) => a[(Math.random() * a.length) | 0];
 
+// Kamera-Einstellungen (Taste C / N, Controller "Select", Handy-Knopf) - bleiben pro Geraet ueber Rennen hinweg
+export const CAMS = [
+  { name: "Normal", dist: 7.0, h: 3.0, look: 1.25, ahead: 6 },
+  { name: "Weit", dist: 10.5, h: 4.7, look: 1.8, ahead: 8, fov: -4 },
+  { name: "Nah", dist: 5.3, h: 2.25, look: 1.45, ahead: 5, fov: 3 },
+  { name: "Von oben", dist: 10, h: 10.5, look: 0.4, ahead: 9, fov: -6 },
+  { name: "Fahrersicht", first: true },
+];
+const CAM_PREF = new Map();
+
 function rampMesh(track, r, dirt) {
   const N = 8, half = track.half;
   const pos = [], idx = [], uv = [];
@@ -100,6 +110,7 @@ export class Race {
       const r = new Racer(d, car, { human: !p.cpu, player: p.cpu ? -1 : players.indexOf(p), id: i });
       if (sprites[d.id]) { r.sprite = new SpriteCar(sprites[d.id]); this.scene.add(r.sprite.mesh); }
       r.dev = p.dev;
+      r.camMode = r.human ? CAM_PREF.get(p.dev) || 0 : 0;
       const row = Math.floor(i / 2), side = i % 2 ? 1 : -1;
       r.place_on_grid(this.track, this.track.L - 8 - row * 7 - (side > 0 ? 3.5 : 0), side * this.track.W * 0.23);
       if (!r.human) initAI(r, this.track);
@@ -180,9 +191,17 @@ export class Race {
       }
     } else this.time += dt;
 
-    // Eingaben
+    // Kamera umschalten
+    for (const h of this.humans) {
+      const c = !!this.inputs.read(h.dev).cam;
+      if (c && !h.prevCam) this.cycleCam(h);
+      h.prevCam = c;
+    }
+    this.catchUp(dt);
+    // Eingaben (Handy weg -> Autopilot faehrt weiter, bis es wieder da ist)
     for (const r of this.racers) {
-      if (r.human && (r.finished || this.autopilot)) { if (!r.ai) initAI(r, this.track); driveAI(r, this, dt); if (r.finished) r.input.item = false; }
+      r.offline = r.human && (r.dev || "").startsWith("ph") && !this.net.phoneState(r.dev);
+      if (r.human && (r.finished || this.autopilot || (r.offline && this.started))) { if (!r.ai) initAI(r, this.track); driveAI(r, this, dt); if (r.finished || r.offline) r.input.item = false; }
       else if (r.human) {
         const s = this.inputs.read(r.dev);
         Object.assign(r.input, { steer: -s.steer, gas: s.gas, brake: s.brake, drift: s.drift, item: s.item, back: s.back });
@@ -233,6 +252,35 @@ export class Race {
     if (this.hudSend <= 0) {
       this.hudSend = 0.25;
       for (const h of this.humans) if (h.dev && h.dev.startsWith("ph")) this.net.send(h.dev, { t: "hud", item: h.roulette > 0 ? "🎲" : h.item ? ITEMS[h.item].icon : "", place: h.place, lap: h.lap, laps: this.laps, pfand: h.pfand, n: this.racers.length });
+    }
+  }
+
+  cycleCam(h) {
+    const prev = CAMS[h.camMode || 0];
+    h.camMode = ((h.camMode || 0) + 1) % CAMS.length;
+    CAM_PREF.set(h.dev, h.camMode);
+    const cam = this.cams[this.humans.indexOf(h)];
+    if (cam && (prev.first || CAMS[h.camMode].first)) cam.userData.pos = null; // in/aus dem Auto: springen statt durchfahren
+    this.hud.message(h, "🎥 Kamera: " + CAMS[h.camMode].name, 1.1, "#9fd8ff");
+    this.sfx("select");
+  }
+
+  // Unauffaelliger Aufholbonus: wer hinten liegt (Platz + Abstand), wird sanft schneller, erholt sich schneller
+  // und zieht bessere Items. Ein weit enteilter Spitzenreiter verliert einen Hauch. Aendert sich nur langsam.
+  catchUp(dt) {
+    if (!this.started) return;
+    let lead = -1e9, second = -1e9;
+    for (const r of this.racers) { if (r.finished) continue; if (r.total > lead) { second = lead; lead = r.total; } else if (r.total > second) second = r.total; }
+    if (second < -1e8) second = lead;
+    const n = this.racers.length;
+    for (const r of this.racers) {
+      let want = 0;
+      if (r.human && !r.finished) {
+        const pf = n > 1 ? (r.place - 1) / (n - 1) : 0;
+        want = Math.min(1, Math.max((lead - r.total) / 240, pf * pf * 0.8));
+        if (r.total >= lead && r.place === 1) want = -Math.min(1, (lead - second) / 160) * 0.35;
+      }
+      r.cu = (r.cu || 0) + (want - (r.cu || 0)) * Math.min(1, dt * 0.35);
     }
   }
 
@@ -326,12 +374,32 @@ export class Race {
     const back = !tv && r0.input.back && r0.human && !(r0.dev || "").startsWith("ph");
     const u = cam.userData;
     const sp = Math.abs(r0.speed), top = this.cls.top;
+    const cm = tv ? CAMS[0] : CAMS[r0.camMode || 0];
+    if (cm.first && (this.started || this.countdown < 1.0)) {
+      // Fahrersicht: vorne im Auto, eigener Sprite wird beim Zeichnen ausgeblendet
+      const sg = back ? -1 : 1;
+      const want = new THREE.Vector3(r.x + fx * 0.8, r.y + 2.45, r.z + fz * 0.8);
+      const look = new THREE.Vector3(r.x + fx * 14 * sg, r.y + 1.9, r.z + fz * 14 * sg);
+      if (!u.pos) { u.pos = want.clone(); u.look.copy(look); }
+      u.pos.lerp(want, 1 - Math.exp(-dt * 30));
+      u.look.lerp(look, 1 - Math.exp(-dt * (back !== u.back ? 60 : 14))); u.back = back;
+      u.shake = Math.max(0, (u.shake || 0) - dt * 2.2);
+      if (r0.shakeReq) { u.shake = Math.max(u.shake, r0.shakeReq); r0.shakeReq = 0; }
+      const sh = u.shake * u.shake;
+      cam.position.set(u.pos.x + (Math.random() - 0.5) * sh * 0.25, u.pos.y + (Math.random() - 0.5) * sh * 0.2, u.pos.z + (Math.random() - 0.5) * sh * 0.25);
+      cam.up.set(0, 1, 0); cam.lookAt(u.look);
+      u.roll = (u.roll || 0) + (((r0.steerVis || 0) * Math.min(1, sp / 22) * 0.03) - (u.roll || 0)) * Math.min(1, dt * 5);
+      cam.rotateZ(u.roll);
+      const fov = 74 + Math.min(1, sp / top) * 10 + (r0.boostT > 0 ? 8 : 0);
+      cam.fov += (fov - cam.fov) * Math.min(1, dt * 4);
+      return;
+    }
     // beim Boost zieht die Kamera leicht zurueck
     u.pull = (u.pull || 0) + (((r0.boostT > 0) ? 1.6 : 0) + Math.min(1, sp / top) * 0.6 - (u.pull || 0)) * Math.min(1, dt * 3);
-    const dist = (tv ? 11 : 7.0) + u.pull, height = tv ? 5 : 3.0 + u.pull * 0.15;
+    const dist = (tv ? 11 : cm.dist) + u.pull * (tv ? 1 : cm.dist / 7), height = tv ? 5 : cm.h + u.pull * 0.15;
     const sgn = back ? -1 : 1;
     const want = new THREE.Vector3(r.x - fx * dist * sgn, r.y + height, r.z - fz * dist * sgn);
-    const look = new THREE.Vector3(r.x + fx * 6 * sgn, r.y + 1.25, r.z + fz * 6 * sgn);
+    const look = new THREE.Vector3(r.x + fx * cm.ahead * sgn, r.y + cm.look, r.z + fz * cm.ahead * sgn);
     if (!u.pos || back !== u.back) { u.pos = want.clone(); u.look.copy(look); u.back = back; }
     u.pos.lerp(want, 1 - Math.exp(-dt * (back ? 30 : 7.5)));
     u.pos.y = Math.max(u.pos.y, r.y + 1.6, this.track.heightAt(u.pos.x, u.pos.z) + 1.4);
@@ -347,7 +415,7 @@ export class Race {
     u.roll = (u.roll || 0) + ((tv ? 0 : (r0.steerVis || 0) * Math.min(1, sp / 22) * 0.045 + (r0.drift ? r0.drift.dir * 0.025 : 0)) - (u.roll || 0)) * Math.min(1, dt * 5);
     cam.rotateZ(u.roll);
     // Sichtfeld je nach Tempo
-    const fov = 64 + Math.min(1, sp / top) * 9 + (r0.boostT > 0 ? 8 : 0);
+    const fov = 64 + (tv ? 0 : cm.fov || 0) + Math.min(1, sp / top) * 9 + (r0.boostT > 0 ? 8 : 0);
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 4);
     if (!this.started && !tv) {
       const t = clamp((this.countdown - 1.0) / 3.2, 0, 1);
@@ -387,7 +455,7 @@ export class Race {
       else { cam = this.tvCam; const lead = this.racers.slice().sort((a, b) => a.place - b.place)[0]; this.updateCam(cam, lead, dt, true); }
       cam.aspect = v.w / v.h; cam.updateProjectionMatrix();
       if (r) hv.push({ ...v, racer: r });
-      return { v, cam, focus: r || this.racers[0] };
+      return { v, cam, focus: r || this.racers[0], first: r && CAMS[r.camMode || 0].first && (this.started || this.countdown < 1.0) ? r : null };
     });
     const draw = (target) => {
       const pr = rd.getPixelRatio();
@@ -404,7 +472,7 @@ export class Race {
         this.sun.target.position.set(mx, this.humans[0].y, mz); this.sun.position.set(mx + this.sunDir.x * 260, this.humans[0].y + this.sunDir.y * 260, mz + this.sunDir.z * 260); this.sun.target.updateMatrixWorld();
         rd.shadowMap.needsUpdate = true;
       }
-      for (const { v, cam, focus } of cams) {
+      for (const { v, cam, focus, first } of cams) {
         const fx = (focus.rx ?? focus.x) + Math.sin(focus.heading) * 30, fz = (focus.rz ?? focus.z) + Math.cos(focus.heading) * 30;
         if (!many) {
         this.sun.target.position.set(fx, focus.y, fz);
@@ -419,7 +487,11 @@ export class Race {
           rd.setViewport(v.x, H - v.y - v.h, v.w, v.h);
           rd.setScissor(v.x, H - v.y - v.h, v.w, v.h);
         }
+        // Fahrersicht: eigenes Auto/Sprite nur in dieser Ansicht ausblenden
+        const hideObj = first ? (first.sprite ? first.sprite.mesh : first.car.root) : null, wasVis = hideObj && hideObj.visible;
+        if (hideObj) hideObj.visible = false;
         rd.render(this.scene, cam);
+        if (hideObj) hideObj.visible = wasVis;
       }
       if (target) { target.scissorTest = false; target.viewport.set(0, 0, target.width, target.height); target.scissor.set(0, 0, target.width, target.height); }
       else rd.setScissorTest(false);

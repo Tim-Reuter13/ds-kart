@@ -54,7 +54,7 @@ function show(id) {
   for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === "s-" + id || (id === "pause" && s.id === "pause"));
   state.screen = id;
   if (id !== "race" && id !== "pause") { const g = hudCanvas.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, hudCanvas.width, hudCanvas.height); }
-  net.broadcast({ t: "mode", m: id === "race" ? "race" : id === "lobby" ? "pick" : "menu" });
+  for (const pid of net.phones.keys()) if (!waiting.has(pid)) net.send(pid, { t: "mode", m: id === "race" ? "race" : id === "lobby" ? "pick" : "menu" });
   if (id === "lobby") sendLobby();
 }
 
@@ -68,24 +68,41 @@ net.on("ready", (code) => {
     $("#qr").innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
   } catch (e) { $("#qr").textContent = "QR-Fehler"; }
 });
+const waiting = new Set(); // Handys, die waehrend eines Rennens kamen -> danach automatisch rein
+const inRace = () => state.screen === "race" || state.screen === "pause" || state.screen === "load";
 net.on("join", (id) => {
   if (!state.players.find(p => p.dev === id)) {
-    if (state.players.length >= 8 || state.screen === "race") { net.send(id, { t: "full" }); }
-    else { addPlayer(id); }
+    if (state.players.length >= 8) net.send(id, { t: "full", why: "max" });
+    else if (inRace()) { waiting.add(id); net.send(id, { t: "full", why: "race" }); }
+    else addPlayer(id);
   }
-  if (!(audioUI && audioUI.isRecording())) net.send(id, { t: "mode", m: state.screen === "race" ? "race" : state.screen === "lobby" ? "pick" : "menu" });
+  if (!(audioUI && audioUI.isRecording()) && !waiting.has(id)) net.send(id, { t: "mode", m: inRace() ? "race" : state.screen === "lobby" ? "pick" : "menu" });
+  if (state.screen === "lobby") renderLobby();
   sendLobby();
 });
+// Handy weg: in der Lobby den Platz noch 25 s freihalten (Sperrbildschirm, Funkloch), dann erst entfernen
 net.on("leave", (id) => {
-  if (state.screen === "lobby") { state.players = state.players.filter(p => p.dev !== id); renderLobby(); sendLobby(); }
+  if (state.screen !== "lobby") return;
+  renderLobby();
+  setTimeout(() => {
+    const ph = net.phone(id);
+    if (state.screen === "lobby" && ph && !ph.online) { state.players = state.players.filter(p => p.dev !== id); renderLobby(); sendLobby(); }
+  }, 25000);
 });
+function admitWaiting() {
+  for (const id of waiting) if (net.phone(id)?.online && !state.players.find(p => p.dev === id) && state.players.length < 8) addPlayer(id);
+  waiting.clear();
+}
 net.on("pick", (id, driver) => {
   const p = state.players.find(p => p.dev === id);
   if (!p) return;
   const di = DRIVERS.findIndex(d => d.id === driver);
   if (di < 0) return;
-  if (state.players.some(o => o !== p && o.di === di)) return;
+  const other = state.players.find(o => o !== p && o.di === di);
+  // bereits fest gewaehlt -> Pech; nur vorbelegt (noch nicht bereit) -> der andere rutscht weiter
+  if (other && other.ready) { net.send(id, { t: "toast", text: DRIVERS[di].name + " ist schon vergeben." }); sendLobby(); return; }
   p.di = di; p.ready = true; audio.sfx("confirm");
+  if (other) other.di = freeDriver(di + 1, 1, other);
   renderLobby(); sendLobby();
 });
 function sendLobby() {
@@ -124,7 +141,7 @@ function renderLobby() {
       <div class="p" style="color:${d.hud}">P${i + 1}</div>
       ${d.portrait ? `<img src="${d.portrait}" alt="" style="width:92px;height:92px;object-fit:cover;border-radius:50%;border:3px solid ${d.hud};background:#0b1730">` : `<div class="swatch" style="background:${d.color}"></div>`}
       <div class="nm">${d.name}</div><div class="car">${d.car}</div>
-      <div class="dev">${name}</div>
+      <div class="dev">${name}${p.dev.startsWith("ph") ? (net.phone(p.dev)?.online ? (net.phone(p.dev).via === "relay" ? " ☁" : " 📶") : " · 📵 getrennt…") : ""}</div>
       <div class="arrows">${p.ready ? "✔ bereit" : p.dev.startsWith("ph") ? "wählt am Handy…" : "◀ ▶ wählen · OK"}</div></div>`;
   }
   box.innerHTML = html;
@@ -166,7 +183,11 @@ for (const [id, k] of [["#sMus", "mus"], ["#sSfx", "sfx"]]) $(id).addEventListen
 $("#sTest").onclick = () => setFamily(!FAMILY);
 addEventListener("pointerdown", () => applyVol(), { once: true });
 
+// bereit = alle verbundenen Spieler haben gewaehlt; getrennte Handys ohne Wahl werden dann weggelassen
+const phoneGone = (q) => q.dev.startsWith("ph") && !net.phone(q.dev)?.online;
+function lobbyReady() { return state.players.some(q => !phoneGone(q)) && state.players.every(q => q.ready || phoneGone(q)); }
 function toSetup() {
+  state.players = state.players.filter(q => q.ready || !phoneGone(q));
   if (!state.players.length) { addPlayer("kb1"); state.players[0].ready = true; }
   for (const p of state.players) p.ready = true;
   state.focus = { row: 0, col: state.track };
@@ -204,6 +225,7 @@ const portraitOf = (id) => DRIVERS.find(d => d.id === id)?.portrait;
 const avatar = (id, color, size = 34) => portraitOf(id) ? `<img src="${portraitOf(id)}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;border:2px solid ${color}">` : `<span class="dot" style="background:${color};width:${size * 0.5}px;height:${size * 0.5}px"></span>`;
 function showResults(res) {
   state.lastResults = res;
+  admitWaiting();
   const fmt = (t) => t == null ? "–" : `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, "0")}`;
   const best = res.find(r => r.human);
   if (state.gp) {
@@ -265,7 +287,7 @@ function menuInput() {
         if (e.cancel && dev === "kb1" && !state.players.length) show("title");
         continue;
       }
-      if (dev.startsWith("ph")) { if (e.start && state.players.every(q => q.ready)) toSetup(); continue; }
+      if (dev.startsWith("ph")) { if (e.start && lobbyReady()) toSetup(); continue; }
       if (!p.ready) {
         if (e.left) { p.di = freeDriver(p.di - 1, -1, p); audio.sfx("select"); renderLobby(); sendLobby(); }
         if (e.right) { p.di = freeDriver(p.di + 1, 1, p); audio.sfx("select"); renderLobby(); sendLobby(); }
@@ -273,7 +295,7 @@ function menuInput() {
         if (e.cancel) { state.players = state.players.filter(q => q !== p); renderLobby(); sendLobby(); }
       } else {
         if (e.cancel) { p.ready = false; renderLobby(); sendLobby(); }
-        if ((e.ok || e.start) && state.players.every(q => q.ready)) { toSetup(); return; }
+        if ((e.ok || e.start) && lobbyReady()) { toSetup(); return; }
       }
     } else if (state.screen === "setup") {
       const f = state.focus;

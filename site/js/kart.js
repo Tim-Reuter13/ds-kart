@@ -88,7 +88,7 @@ export class Racer {
     }
 
     const started = race.started;
-    let top = cls.top * st.speed * (1 + 0.012 * this.pfand) * (this.human ? 1 : race.aiScale(this));
+    let top = cls.top * st.speed * (1 + 0.012 * this.pfand) * (this.human ? 1 + 0.065 * (this.cu || 0) : race.aiScale(this));
     if (this.boostT > 0) top *= this.boostKind === 2 ? 1.42 : 1.32;
     if (this.invT > 0) top *= 1.22;
     if (this.flashT > 0) top *= 0.6;
@@ -110,7 +110,7 @@ export class Racer {
     const steer = Math.abs(this.steerS) < 0.01 && rawSteer === 0 ? 0 : this.steerS;
 
     // Geschwindigkeit
-    const acc = 15.5 * st.accel;
+    const acc = 15.5 * st.accel * (1 + 0.3 * Math.max(0, this.cu || 0));
     if (this.boostT > 0 && started) {
       this.speed = Math.min(top, this.speed + 45 * dt);
     } else if (gas) {
@@ -124,7 +124,7 @@ export class Racer {
       this.speed -= Math.sign(this.speed) * f;
       if (this.speed > top) this.speed -= (this.speed - top) * 1.6 * dt;
     }
-    if (this.spinT > 0) { this.spinT -= dt; this.speed *= Math.pow(0.25, dt); }
+    if (this.spinT > 0) { this.spinT -= dt * (1 + 0.4 * Math.max(0, this.cu || 0)); this.speed *= Math.pow(0.25, dt); }
     if (!this.air) {
       const th = Math.atan2(track.tx[this.hint < 0 ? 0 : this.hint], track.tz[this.hint < 0 ? 0 : this.hint]);
       const along = Math.cos(this.heading - th);

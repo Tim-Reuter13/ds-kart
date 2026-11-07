@@ -74,14 +74,32 @@ export class Replay {
     });
     // Kamera
     const fr = this.race.racers[this.focusId(e)] || this.race.racers[0];
-    const p = new THREE.Vector3(fr.rx, fr.ry + 1.0, fr.rz);
+    // Bildmitte auf Brusthoehe der Figur (Sprite ist ~4,3 m hoch) -> Kopf + Auto passen samt Kino-Balken ins Bild
+    const p = new THREE.Vector3(fr.rx, fr.ry + 2.15, fr.rz);
     // Kamera-Stile: meist von vorne (Gesichter!), ab und zu ein Kranflug
     const style = [1, 0, 1, 2, 0, 1][this.ci % 6], u = this.t / CLIP;
     let pos;
-    if (style === 0) { const ang = fr.rh - 1.1 + u * 2.2; pos = new THREE.Vector3(p.x + Math.sin(ang) * 7.5, p.y + 1.8, p.z + Math.cos(ang) * 7.5); }      // Schwenk vorne links -> vorne rechts
-    else if (style === 1) { const ang = fr.rh + 0.35 - u * 0.7; pos = new THREE.Vector3(p.x + Math.sin(ang) * (6.5 - u * 1.2), p.y + 0.7, p.z + Math.cos(ang) * (6.5 - u * 1.2)); } // tiefe Frontfahrt
-    else { const ang = fr.rh + 0.9 - u * 1.8; pos = new THREE.Vector3(p.x + Math.sin(ang) * (15 - u * 7), p.y + 10 - u * 7, p.z + Math.cos(ang) * (15 - u * 7)); } // Kran von vorne oben
+    if (style === 0) { const ang = fr.rh - 1.0 + u * 2.0; pos = new THREE.Vector3(p.x + Math.sin(ang) * 10.5, p.y + 0.9, p.z + Math.cos(ang) * 10.5); }      // Schwenk vorne links -> vorne rechts
+    else if (style === 1) { const ang = fr.rh + 0.35 - u * 0.7, d = 11 - u * 1.6; pos = new THREE.Vector3(p.x + Math.sin(ang) * d, p.y - 0.6, p.z + Math.cos(ang) * d); } // tiefe Frontfahrt
+    else { const ang = fr.rh + 0.9 - u * 1.8, d = 17 - u * 6; pos = new THREE.Vector3(p.x + Math.sin(ang) * d, p.y + 9 - u * 6, p.z + Math.cos(ang) * d); } // Kran von vorne oben
     pos.y = Math.max(pos.y, this.race.track.heightAt(pos.x, pos.z) + 0.8);
-    this.cam.position.copy(pos); this.cam.up.set(0, 1, 0); this.cam.lookAt(p);
+    // Steht ein anderes Auto zwischen Kamera und Figur? Dann hoeher bzw. naeher ran.
+    const blocked = (c) => this.race.racers.some(o => {
+      if (o === fr || o.rx === undefined) return false;
+      const ax = p.x - c.x, az = p.z - c.z, L2 = ax * ax + az * az || 1;
+      const t = ((o.rx - c.x) * ax + (o.rz - c.z) * az) / L2;
+      if (t < 0.02 || t > 0.9) return false;
+      const yl = c.y + (p.y - c.y) * t;
+      return Math.hypot(o.rx - (c.x + ax * t), o.rz - (c.z + az * t)) < 2.4 && yl < o.ry + 4.4;
+    });
+    // Ausweichpositionen: erst seitlich schwenken, dann naeher ran, nur wenig hoeher (Sprites sehen von oben flach aus)
+    const rot = (c, a) => { const dx = c.x - p.x, dz = c.z - p.z, cs = Math.cos(a), sn = Math.sin(a); return new THREE.Vector3(p.x + dx * cs + dz * sn, c.y, p.z - dx * sn + dz * cs); };
+    const near = p.clone().lerp(pos, 0.72);
+    const up = (c, h) => c.clone().add(new THREE.Vector3(0, h, 0));
+    const cands = [pos, rot(pos, 0.5), rot(pos, -0.5), near, rot(near, 0.6), rot(near, -0.6), up(pos, 2.2), up(near, 1.6), rot(near, 1.1), rot(near, -1.1)];
+    const best = cands.find(c => !blocked(c)) || near;
+    if (this.camCi !== this.ci || !this.cp) { this.cp = best.clone(); this.camCi = this.ci; }
+    else this.cp.lerp(best, 1 - Math.exp(-dt * 4));
+    this.cam.position.copy(this.cp); this.cam.up.set(0, 1, 0); this.cam.lookAt(p);
   }
 }

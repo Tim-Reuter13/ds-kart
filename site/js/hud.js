@@ -177,12 +177,49 @@ export class HUD {
         if (d < 38 && d > 2 && (Math.sin(o.h) * dx + Math.cos(o.h) * dz) / d > 0.9) txt(g, (FAMILY ? "⚠ 💦 von hinten!" : "⚠ 🍾 von hinten!"), cx, y + 128 * u, 32 * u, "#ffb02a", "center", EMOJI);
       }
     }
-    if (r.wrongT > 1.2 && !r.finished) txt(g, "Falsche Richtung!", cx, cy + 10 * u, 46 * u, "#ff6a5a", "center");
+    // Falsche Richtung: grosser Pfeil, der zeigt, wohin man drehen muss (bleibt, bis man wieder grob richtig faehrt)
+    {
+      const tr = race.track, i = r.hint < 0 ? 0 : r.hint;
+      let diff = Math.atan2(tr.tx[i], tr.tz[i]) - r.heading;
+      while (diff > Math.PI) diff -= 2 * Math.PI; while (diff < -Math.PI) diff += 2 * Math.PI;
+      if (r.wrongT > 0.7 && !r.finished && race.started) r._wrong = true;
+      if (r._wrong && (Math.abs(diff) < 0.7 || r.finished)) r._wrong = false;
+      if (r._wrong) this.wrongArrow(g, cx, y + h * 0.2, u, diff, race.time);
+    }
+    if (r.offline && !r.finished) txt(g, "📵 Handy getrennt – Autopilot fährt", cx, y + h - 92 * u, 24 * u, "#ffd23a", "center", EMOJI);
     if (r.finished) {
       txt(g, `ZIEL!  ${r.place}. Platz`, cx, cy, 64 * u, placeCol(r.place), "center");
     }
     if (r.respawnT > 0) txt(g, "🛟  Rettungsschwimmer kommt…", cx, cy + 60 * u, 30 * u, "#fff", "center", EMOJI);
     g.restore();
+  }
+
+  // diff > 0 = Strecke liegt links (Kamera schaut nach vorne, also Bildschirm-oben = Fahrtrichtung)
+  wrongArrow(g, x, y, u, diff, time) {
+    const s = 70 * u * (1 + 0.08 * Math.sin(time * 9));
+    const blink = Math.floor(time * 4) % 2;
+    g.save();
+    g.translate(x, y);
+    // Dreh-Bogen: startet oben (= aktuelle Fahrtrichtung) und laeuft in der kuerzeren Drehrichtung bis zur Strecke
+    const left = diff > 0, R = s * 1.05;
+    const a0 = -Math.PI / 2, a1 = -Math.PI / 2 - diff;
+    const aEnd = a1 + (left ? 0.18 : -0.18); // Bogen endet unter der Spitze
+    g.lineCap = "round";
+    if (Math.abs(diff) > 0.35) {
+      g.lineWidth = s * 0.34; g.strokeStyle = "rgba(10,14,28,0.8)";
+      g.beginPath(); g.arc(0, 0, R, a0, aEnd, left); g.stroke();
+      g.lineWidth = s * 0.22; g.strokeStyle = blink ? "#ffd23a" : "#ff6a3a";
+      g.beginPath(); g.arc(0, 0, R, a0, aEnd, left); g.stroke();
+    }
+    // Pfeilspitze am Bogenende, tangential
+    const ex = Math.cos(a1) * R, ey = Math.sin(a1) * R, tang = a1 + (left ? -Math.PI / 2 : Math.PI / 2);
+    g.translate(ex, ey); g.rotate(tang);
+    g.beginPath(); g.moveTo(s * 0.62, 0); g.lineTo(-s * 0.28, -s * 0.5); g.lineTo(-s * 0.28, s * 0.5); g.closePath();
+    g.lineWidth = s * 0.12; g.lineJoin = "round"; g.strokeStyle = "rgba(10,14,28,0.85)"; g.stroke();
+    g.fillStyle = blink ? "#ffd23a" : "#ff6a3a"; g.fill();
+    g.restore();
+    txt(g, "Falsche Richtung!", x, y + s * 1.75, 40 * u, "#ff6a5a", "center");
+    txt(g, diff > 0 ? "⟲ nach links wenden" : "nach rechts wenden ⟳", x, y + s * 1.75 + 40 * u, 22 * u, "#ffffff", "center", "Arial, sans-serif");
   }
 
   drawReplay(caption, i, n, prog) {
