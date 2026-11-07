@@ -1,5 +1,5 @@
 // Standard-Sounds synthetisch per WebAudio; eigene Aufnahmen (Audio-Profil) ersetzen sie
-const VOICE_PITCH = { tim: 128, sonja: 235, jannik: 118, franzi: 225, toni: 98, giovanni: 140, kevin: 150, paula: 210 };
+const VOICE_PITCH = { tim: 128, sonja: 235, jannik: 118, franzi: 225, toni: 98, giovanni: 140, kevin: 150, paula: 210, papa: 104 };
 const VOWEL = { a: [800, 1250], e: [480, 1900], i: [300, 2300], o: [500, 880], u: [340, 780], ue: [300, 1600] };
 const LINES = {
   start: [["o", 0.13, 1.0, 1.1], ["e", 0.2, 1.2, 1.3]],

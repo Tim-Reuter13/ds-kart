@@ -4,7 +4,7 @@
 import * as THREE from "three";
 import { FAMILY } from "./family.js";
 
-export const SPRITE_DRIVERS = ["tim", "franzi", "sonja", "jannik", "giovanni"];
+export const SPRITE_DRIVERS = ["tim", "franzi", "sonja", "jannik", "giovanni", "papa"];
 const sets = {};
 
 export async function loadSpriteSet(id) {

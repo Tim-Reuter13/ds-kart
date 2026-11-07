@@ -19,6 +19,8 @@ export const DRIVERS = [
     shirt: "#141414", hair: "#2a1a10", hairStyle: "cap", skin: "#e9bc98", stats: { speed: 1.03, accel: 1.04, handling: 0.99, weight: 0.92 } },
   { id: "paula", name: "Post-Paula", car: "Postauto", type: "van", color: "#f7c600", accent: "#1a1a1a", hud: "#ffd84a", cpu: true,
     shirt: "#f7c600", hair: "#b0602a", hairStyle: "long", skin: "#f1c9a8", stats: { speed: 0.99, accel: 1.0, handling: 1.0, weight: 1.1 } },
+  { id: "papa", name: "Sonjas Papa", car: "Mazda CX-30", type: "x4", color: "#9e1b26", accent: "#2a2c30", hud: "#ff9a3a", cpu: true,
+    shirt: "#6f86b8", hair: "#b9a894", hairStyle: "short", skin: "#f0c4a6", portrait: "sprites/papa/portrait.webp", stats: { speed: 1.01, accel: 0.98, handling: 1.01, weight: 1.12 } },
 ];
 
 const SHAPES = {
