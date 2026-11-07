@@ -10,11 +10,14 @@ import { TRACKS } from "./tracks.js";
 import { RoomEnvironment } from "../vendor/RoomEnvironment.js";
 import { initAudioUI } from "./audioui.js";
 import { Pipeline, QUALITY } from "./render.js";
+import { AutoRes } from "./perf.js";
 import { loadSpriteSet, SPRITE_DRIVERS } from "./sprites.js";
 import { FAMILY, setFamily } from "./family.js";
 
 const $ = (s) => document.querySelector(s);
-const renderer = new THREE.WebGLRenderer({ canvas: $("#gl"), antialias: true, powerPreference: "high-performance" });
+// Kantenglaettung macht ab "Mittel" das HDR-Zwischenbild (MSAA) - die Leinwand selbst braucht dann keine (spart Grafikspeicher + Zeit)
+let q0 = "high"; try { q0 = localStorage.getItem("dskart_quality") || "high"; } catch (e) {}
+const renderer = new THREE.WebGLRenderer({ canvas: $("#gl"), antialias: !(QUALITY[q0] || QUALITY.high).post, powerPreference: "high-performance" });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -26,6 +29,8 @@ window.__env = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 renderer.setSize(innerWidth, innerHeight, false); // vor der Pipeline, sonst baut Bloom mit 300x150 (rechte Splitscreen-Haelfte weiss)
 const pipeline = new Pipeline(renderer);
 window.__pipeline = pipeline;
+const autoRes = new AutoRes(renderer, pipeline);
+window.__autoRes = autoRes;
 const hudCanvas = $("#hud");
 const hud = new HUD(hudCanvas);
 const audio = new Audio();
@@ -211,11 +216,14 @@ async function startRace() {
   } catch (e) { $("#loading").textContent = "Strecke konnte nicht geladen werden."; return; }
   await new Promise(r => setTimeout(r, 30));
   const sprites = {};
-  await Promise.all(SPRITE_DRIVERS.map(id => loadSpriteSet(id).then(s => sprites[id] = s).catch(e => console.warn("Sprite fehlt", id, e))));
+  // kleine Sprite-Texturen im Splitscreen ab 3 Spielern bzw. auf Niedrig/Mittel (Figuren sind dann eh klein im Bild)
+  const lv = pipeline.level, small = lv === "low" || lv === "medium" || (lv !== "ultra" && state.players.length >= 3);
+  await Promise.all(SPRITE_DRIVERS.map(id => loadSpriteSet(id, small).then(s => sprites[id] = s).catch(e => console.warn("Sprite fehlt", id, e))));
   if (state.race) { state.race.dispose(); state.race = null; }
   const players = state.players.map(p => ({ dev: p.dev, driver: DRIVERS[p.di].id }));
   state.race = new Race({ sprites, renderer, pipeline, hud, audio, net, inputs, def, data: cache[def.id], players, cls: state.cls, laps: state.laps, onEnd: showResults });
   window.__race = state.race;
+  autoRes.reset(Math.max(1, players.length));
   if (new URLSearchParams(location.search).has("auto")) state.race.autopilot = true;
   show("race");
 }
@@ -349,7 +357,10 @@ function frame(now) {
   menuInput();
   if (state.race && (state.screen === "race" || state.screen === "pause")) {
     state.race.update(dt);
+    autoRes.begin();
     state.race.render(dt);
+    autoRes.end();
+    if (state.screen === "race") autoRes.tick(dt); else autoRes.poll();
   }
   requestAnimationFrame(frame);
 }
@@ -361,6 +372,7 @@ if (qs.has("test")) {
   const [t, n] = qs.get("test").split(",").map(Number);
   state.track = t || 0;
   for (let i = 0; i < (n || 1); i++) state.players.push({ dev: ["kb1", "kb2", "gp0", "gp1"][i] || "test" + i, di: i, ready: true });
+  if (qs.has("drv")) { const di = DRIVERS.findIndex(d => d.id === qs.get("drv")); if (di >= 0) state.players[0].di = di; } // z.B. &drv=aileen
   if (qs.has("cls")) state.cls = qs.get("cls");
   if (qs.has("laps")) state.laps = +qs.get("laps");
   startRace();

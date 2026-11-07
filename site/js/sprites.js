@@ -4,19 +4,30 @@
 import * as THREE from "three";
 import { FAMILY } from "./family.js";
 
-export const SPRITE_DRIVERS = ["tim", "franzi", "sonja", "jannik", "giovanni", "papa"];
+export const SPRITE_DRIVERS = ["tim", "franzi", "sonja", "jannik", "giovanni", "papa", "kinga", "aileen"];
 const sets = {};
 
-export async function loadSpriteSet(id) {
-  if (sets[id]) return sets[id];
+// small = halbe Aufloesung (256er-Zellen, *_s.webp): ein Viertel Grafikspeicher, fuer Splitscreen/niedrige Stufen.
+// Die UV-Rechnung bleibt gleich (alles relativ zur vollen Atlasgroesse).
+export async function loadSpriteSet(id, small = false) {
+  const key = id + (small ? "|s" : "");
+  if (sets[key]) return sets[key];
+  const other = sets[id + (small ? "" : "|s")];
+  if (other) { for (const t of Object.values(other.tex)) t.dispose(); delete sets[id + (small ? "" : "|s")]; }
   const base = `sprites/${id}/`;
   const spec = await (await fetch(base + "sprite.json")).json();
   const loader = new THREE.TextureLoader();
   const tex = {};
   await Promise.all(Object.entries(spec.states).map(([st, s]) => new Promise((res, rej) => {
-    loader.load(base + s.file, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.generateMipmaps = true; tex[st] = t; res(); }, undefined, rej);
+    const file = small ? s.file.replace(/\.webp$/, "_s.webp") : s.file;
+    loader.load(base + file, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = small ? 4 : 8; t.generateMipmaps = true; tex[st] = t; res(); }, undefined, rej);
   })));
-  return (sets[id] = { id, spec, tex });
+  return (sets[key] = { id, spec, tex, small });
+}
+
+// Texturen vorab auf die Grafikkarte laden -> kein Ruckler beim ersten Treffer/Wurf
+export function warmSprites(renderer, list) {
+  for (const set of list) for (const t of Object.values(set.tex)) { try { renderer.initTexture(t); } catch (e) {} }
 }
 
 const TWO_PI = Math.PI * 2;
@@ -25,6 +36,9 @@ const norm = (a) => ((a % TWO_PI) + TWO_PI) % TWO_PI;
 export class SpriteCar {
   constructor(set, size = 3.9, lift = 0.42) {
     this.set = set;
+    this.foot = !!set.spec.foot; // zu Fuss (Aileen): Laufzyklus statt Standbild, Stehen bei Stillstand
+    if (this.foot) { size = 4.3; lift = 0.06; }
+    this.runT = Math.random(); this.slow = true; this.lastStep = -1; this.onStep = null;
     const pv = set.spec.pivot;
     const g = new THREE.PlaneGeometry(size, size);
     g.translate(0, size * (pv[1] - 0.5) + lift, 0); // Fahrbahnkontakt knapp ueber y = 0
@@ -39,6 +53,7 @@ export class SpriteCar {
       this.maps[st] = c;
     }
     this.mat = new THREE.MeshLambertMaterial({ map: this.maps.fahren, transparent: true, alphaTest: 0.35, depthWrite: true, side: THREE.DoubleSide });
+    this.mat.forceSinglePass = true; // sonst zeichnet three.js durchsichtige beidseitige Flaechen zweimal (Rueck- + Vorderseite)
     this.mat.color.setRGB(1.32, 1.3, 1.26);
     this.mesh = new THREE.Mesh(g, this.mat);
     this.mesh.frustumCulled = false;
@@ -69,6 +84,15 @@ export class SpriteCar {
     }
     // Bewegung: Wippen mit dem Tempo, Wanken in Kurven, Strecken beim Boost, Stauchen bei der Landung
     const sp = Math.min(1, Math.abs(r.speed) / 26);
+    if (this.foot) {
+      // Schrittfrequenz waechst mit dem Tempo (bei Vollgas schneller als echt - ist ja ein Funracer)
+      this.slow = Math.abs(r.speed) < 1.2 && !r.air;
+      if (!this.slow) this.runT += dt * (0.55 + 1.25 * Math.min(1.3, Math.abs(r.speed) / 24)) * (r.boostT > 0 ? 1.25 : 1);
+      const ph = this.runT * 1000 / 110, step = Math.floor(ph) % 4;
+      if (!this.slow && step !== this.lastStep && (step === 0 || step === 2) && this.onStep) this.onStep();
+      this.lastStep = step;
+      this.bob = this.slow ? 0 : Math.abs(Math.sin(ph * Math.PI / 2)) * 0.07 * Math.max(0.4, sp);
+    } else
     this.bob = Math.sin(this.t * (9 + sp * 14)) * 0.045 * sp + Math.sin(this.t * 23) * 0.012 * sp;
     const leanT = -(r.steerVis || 0) * 0.09 * sp - (r.drift ? r.drift.dir * 0.06 : 0);
     this.lean += (leanT - this.lean) * Math.min(1, dt * 7);
@@ -93,11 +117,13 @@ export class SpriteCar {
     const ang = norm(this.yaw - toCam);
     const idx = Math.round(ang / (Math.PI / 4)) % 8;
     const key = String(idx * 45);
-    const st = this.set.spec.states[this.state];
+    const view = this.foot && this.state === "fahren" && this.slow && this.maps.stehen ? "stehen" : this.state;
+    const st = this.set.spec.states[view];
     const fr = st.frames[key] || st.frames["0"];
-    const fi = fr.length > 1 ? Math.floor(this.stateT * 1000 / Math.max(1, st.dur)) % fr.length : 0;
+    const tt = this.foot && view === "fahren" ? this.runT : this.stateT;
+    const fi = fr.length > 1 ? Math.floor(tt * 1000 / Math.max(1, st.dur)) % fr.length : 0;
     const xy = fr[fi];
-    const m = this.maps[this.state];
+    const m = this.maps[view];
     m.offset.set(xy[0] / st.w, 1 - (xy[1] + this.set.spec.cell) / st.h);
     if (this.mat.map !== m) this.mat.map = m;
     // Billboard zur Kamera; Wanken nur sichtbar, wenn man von vorn/hinten schaut

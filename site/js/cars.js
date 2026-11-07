@@ -21,6 +21,11 @@ export const DRIVERS = [
     shirt: "#f7c600", hair: "#b0602a", hairStyle: "long", skin: "#f1c9a8", stats: { speed: 0.99, accel: 1.0, handling: 1.0, weight: 1.1 } },
   { id: "papa", name: "Sonjas Papa", car: "Mazda CX-30", type: "x4", color: "#9e1b26", accent: "#2a2c30", hud: "#ff9a3a", cpu: true,
     shirt: "#6f86b8", hair: "#b9a894", hairStyle: "short", skin: "#f0c4a6", portrait: "sprites/papa/portrait.webp", stats: { speed: 1.01, accel: 0.98, handling: 1.01, weight: 1.12 } },
+  { id: "kinga", name: "Kinga", car: "Renault Espace", type: "touran", color: "#3b3e44", accent: "#c9ccd1", hud: "#c79bff", cpu: true,
+    shirt: "#c8a2d8", hair: "#c49a6c", hairStyle: "long", skin: "#f2cdb0", portrait: "sprites/kinga/portrait.webp", stats: { speed: 1.0, accel: 1.03, handling: 1.02, weight: 1.04 } },
+  // Aileen laeuft zu Fuss: spritziger, wird aber leichter weggerempelt
+  { id: "aileen", name: "Aileen", car: "zu Fuß 🏃‍♀️", type: "hatch", color: "#8a8d92", accent: "#1d1d1f", hud: "#3fd6c0", cpu: true, foot: true,
+    shirt: "#8a8d92", hair: "#4a2c1c", hairStyle: "long", skin: "#f0c8aa", portrait: "sprites/aileen/portrait.webp", stats: { speed: 0.99, accel: 1.08, handling: 1.07, weight: 0.86 } },
 ];
 
 const SHAPES = {

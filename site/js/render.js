@@ -7,8 +7,8 @@ import { UnrealBloomPass } from "../vendor/jsm/postprocessing/UnrealBloomPass.js
 import { OutputPass } from "../vendor/jsm/postprocessing/OutputPass.js";
 
 export const QUALITY = {
-  low:    { name: "Niedrig", pr: 0.75, shadows: false, shadowSize: 1024, post: false, bloom: false, extras: 0.35 },
-  medium: { name: "Mittel",  pr: 1.0,  shadows: true,  shadowSize: 1024, post: true,  bloom: false, extras: 0.7 },
+  low:    { name: "Niedrig", pr: 0.75, shadows: false, shadowSize: 1024, post: false, bloom: false, extras: 0.35, tex: 2048 },
+  medium: { name: "Mittel",  pr: 1.0,  shadows: true,  shadowSize: 1024, post: true,  bloom: false, extras: 0.7, tex: 2048 },
   high:   { name: "Hoch",    pr: 1.25, shadows: true,  shadowSize: 2048, post: true,  bloom: true,  extras: 1.0 },
   ultra:  { name: "Ultra",   pr: 2.0,  shadows: true,  shadowSize: 4096, post: true,  bloom: true,  extras: 1.3 },
 };
@@ -46,6 +46,7 @@ export class Pipeline {
   constructor(renderer) {
     this.renderer = renderer;
     this.level = "high";
+    this.scale = 1; // automatische Aufloesung (AutoRes in perf.js), 0.5..1
     try { this.level = localStorage.getItem("dskart_quality") || "high"; } catch (e) {}
     if (!QUALITY[this.level]) this.level = "high";
     this.build();
@@ -57,9 +58,15 @@ export class Pipeline {
     try { localStorage.setItem("dskart_quality", l); } catch (e) {}
     this.build();
   }
+  setScale(s) {
+    if (Math.abs(s - this.scale) < 0.001) return;
+    this.scale = s;
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.q.pr) * s);
+    this.resize();
+  }
   build() {
     const r = this.renderer, q = this.q;
-    r.setPixelRatio(Math.min(devicePixelRatio || 1, q.pr));
+    r.setPixelRatio(Math.min(devicePixelRatio || 1, q.pr) * this.scale);
     r.shadowMap.enabled = q.shadows;
     if (this.composer) { this.composer.dispose(); this.composer = null; }
     if (!q.post) return;

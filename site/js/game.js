@@ -8,7 +8,8 @@ import { FX } from "./fx.js";
 import { initAI, driveAI } from "./ai.js";
 import { T } from "./tex.js";
 import { buildRaceDeco } from "./racedeco.js";
-import { SpriteCar } from "./sprites.js";
+import { SpriteCar, warmSprites } from "./sprites.js";
+import { chunkWorld } from "./perf.js";
 import { Recorder, Replay } from "./replay.js";
 import { FAMILY, clean } from "./family.js";
 
@@ -92,6 +93,9 @@ export class Race {
     if (def.setup) def.setup(this.track, data);
     this.track.setRamps(def.ramps || []);
     this.world = buildWorld(this.scene, this.track, data, def, this.quality);
+    // grosse Welt-Meshes in Kacheln teilen -> nur Sichtbares wird gezeichnet (auch im Schattenbild)
+    this.world.group.updateMatrixWorld(true);
+    if (!/[?&]nochunk/.test(location.search)) chunkWorld(this.world.group); // &nochunk = Vergleichstest
     for (const r of this.track.ramps) this.scene.add(rampMesh(this.track, r, def.style === "lake"));
     this.fx = new FX(this.scene);
 
@@ -111,7 +115,13 @@ export class Race {
       car.root.traverse(o => { if (o.isMesh) o.castShadow = true; });
       this.scene.add(car.root); this.scene.add(car.shadow);
       const r = new Racer(d, car, { human: !p.cpu, player: p.cpu ? -1 : players.indexOf(p), id: i });
-      if (sprites[d.id]) { r.sprite = new SpriteCar(sprites[d.id]); this.scene.add(r.sprite.mesh); }
+      if (sprites[d.id]) {
+        r.sprite = new SpriteCar(sprites[d.id]); this.scene.add(r.sprite.mesh);
+        if (r.sprite.foot) {
+          car.shadow.scale.set(0.5, 0.36, 1); // Person statt Auto: kleiner Schatten
+          if (r.human) r.sprite.onStep = () => this.audio.sfx("step");
+        }
+      }
       r.dev = p.dev;
       r.camMode = r.human ? CAM_PREF.get(p.dev) || 0 : 0;
       const row = Math.floor(i / 2), side = i % 2 ? 1 : -1;
@@ -120,6 +130,7 @@ export class Race {
       this.racers.push(r);
     });
     this.humans = this.racers.filter(r => r.human).sort((a, b) => a.player - b.player);
+    warmSprites(renderer, [...new Set(this.racers.filter(r => r.sprite).map(r => r.sprite.set))]);
     this.items = new Items(this);
     this.deco = buildRaceDeco(this);
     this.rec = new Recorder(this);
@@ -440,6 +451,8 @@ export class Race {
       const draw = (target) => {
         const pr = rd.getPixelRatio();
         this.sun.target.position.set(cam.position.x, cam.position.y, cam.position.z); this.sun.position.set(cam.position.x + this.sunDir.x * 200, cam.position.y + this.sunDir.y * 200, cam.position.z + this.sunDir.z * 200); this.sun.target.updateMatrixWorld();
+        const sc = this.sun.shadow.camera; rd.shadowMap.autoUpdate = true;
+        if (sc.right !== 75) { sc.left = -75; sc.right = 75; sc.top = 75; sc.bottom = -75; sc.updateProjectionMatrix(); }
         if (target) { target.viewport.set(0, 0, W * pr, H * pr); target.scissor.copy(target.viewport); target.scissorTest = false; rd.setRenderTarget(target); }
         else { rd.setViewport(0, 0, W, H); rd.setScissorTest(false); }
         rd.render(this.scene, cam);
@@ -466,15 +479,21 @@ export class Race {
       // ganzes Zwischenbild loeschen: Fugen zwischen Ansichten wuerden sonst vom Bloom jedes Bild aufaddiert (-> alles weiss)
       if (target) { target.scissorTest = false; target.viewport.set(0, 0, target.width, target.height); target.scissor.set(0, 0, target.width, target.height); rd.setRenderTarget(target); rd.clear(); }
       if (!target) rd.setScissorTest(true);
-      const many = cams.length > 4;
-      const sc = this.sun.shadow.camera, ext = many ? 150 : 75;
-      if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix(); }
-      rd.shadowMap.autoUpdate = !many;
+      // Splitscreen: EIN Schattenbild fuer alle Ansichten (statt eins pro Ansicht), mittig zwischen den Spielern
+      const many = cams.length > 1;
+      let ext = 75;
       if (many) {
-        let mx = 0, mz = 0; for (const h of this.humans) { mx += h.x; mz += h.z; } mx /= this.humans.length; mz /= this.humans.length;
-        this.sun.target.position.set(mx, this.humans[0].y, mz); this.sun.position.set(mx + this.sunDir.x * 260, this.humans[0].y + this.sunDir.y * 260, mz + this.sunDir.z * 260); this.sun.target.updateMatrixWorld();
+        let mx = 0, mz = 0, my = 0;
+        for (const c of cams) { const f = c.focus; mx += f.x + Math.sin(f.heading) * 18; mz += f.z + Math.cos(f.heading) * 18; my += f.y; }
+        mx /= cams.length; mz /= cams.length; my /= cams.length;
+        let spread = 0; for (const c of cams) spread = Math.max(spread, Math.hypot(c.focus.x - mx, c.focus.z - mz));
+        ext = Math.ceil(Math.min(170, Math.max(80, spread + 55)) / 10) * 10;
+        this.sun.target.position.set(mx, my, mz); this.sun.position.set(mx + this.sunDir.x * 260, my + this.sunDir.y * 260, mz + this.sunDir.z * 260); this.sun.target.updateMatrixWorld();
         rd.shadowMap.needsUpdate = true;
       }
+      const sc = this.sun.shadow.camera;
+      if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix(); }
+      rd.shadowMap.autoUpdate = !many;
       for (const { v, cam, focus, first } of cams) {
         const fx = (focus.rx ?? focus.x) + Math.sin(focus.heading) * 30, fz = (focus.rz ?? focus.z) + Math.cos(focus.heading) * 30;
         if (!many) {
@@ -501,7 +520,7 @@ export class Race {
     };
     if (this.pipeline) this.pipeline.render(draw); else draw(null);
     this.hud.draw(this, hv, dt);
-    for (const h of this.humans) this.audio.engine(h.id, h.speed, h.boostT > 0, this.started || this.countdown < 3.5, h.driver.id);
+    for (const h of this.humans) this.audio.engine(h.id, h.speed, h.boostT > 0, this.started || this.countdown < 3.5, h.driver.id, h.driver.foot);
   }
 
   results() {

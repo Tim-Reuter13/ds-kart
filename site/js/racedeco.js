@@ -1,6 +1,7 @@
 // Rennstrecken-Deko: Boost-Felder (mit Wirkung), leuchtende Randmarker, Kurvenpfeile,
 // DS-Kart-Fahnen, Tribuene mit Zuschauern, Konfetti am Start
 import * as THREE from "three";
+import { mergeStatic } from "./perf.js";
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -70,6 +71,7 @@ export function buildRaceDeco(race) {
     const back = new THREE.MeshStandardMaterial({ color: "#2a2f38", roughness: 0.6 });
     const boardG = new THREE.BoxGeometry(3.0, 1.5, 0.15);
     const postG = new THREE.CylinderGeometry(0.08, 0.08, 1.6, 8);
+    const boards = new THREE.Group(); group.add(boards);
     for (const c of curves) {
       const outer = c.dir > 0 ? 1 : -1; // Linkskurve (positiv) -> aussen rechts
       for (let k = 0; k < 3; k++) {
@@ -84,9 +86,10 @@ export function buildRaceDeco(race) {
         b.position.set(p.x, tr.heightAt(p.x, p.z), p.z);
         b.rotation.y = p.heading + Math.PI; // Schild schaut den Fahrern entgegen
         b.traverse(o => { if (o.isMesh) o.castShadow = true; });
-        group.add(b);
+        boards.add(b);
       }
     }
+    mergeStatic(boards); // alle Tafeln zusammen: 3 statt ~6 Zeichenaufrufe pro Tafel
   }
 
   // ---------- Boost-Felder auf geraden Stuecken
@@ -139,7 +142,7 @@ export function buildRaceDeco(race) {
     const flagG = new THREE.PlaneGeometry(1.1, 3.6, 1, 6); flagG.translate(0.6, 3.6, 0);
     const poleM = new THREE.MeshStandardMaterial({ color: "#d9dde2", metalness: 0.6, roughness: 0.35 });
     const fMats = flagTex.map(t => new THREE.MeshStandardMaterial({ map: t, side: THREE.DoubleSide, roughness: 0.7 }));
-    const flags = [];
+    const flags = [], poles = [];
     let next = 20, side = 1;
     const step = 46 / Math.max(0.4, q.extras);
     for (let i = 0; i < tr.n; i++) {
@@ -147,13 +150,24 @@ export function buildRaceDeco(race) {
       next = tr.s[i] + step; side = -side;
       if (sideOpen(tr, i, side) || Math.abs(curvWin(tr, i)) > 0.012) continue;
       const p = tr.at(tr.s[i], side * (tr.edge + 1.2));
-      const f = new THREE.Group();
-      const pole = new THREE.Mesh(poleG, poleM); pole.castShadow = true; f.add(pole);
-      const flag = new THREE.Mesh(flagG, fMats[flags.length % 3]); flag.castShadow = true; f.add(flag);
-      f.position.set(p.x, tr.heightAt(p.x, p.z), p.z); f.rotation.y = p.heading + Math.PI / 2;
-      group.add(f); flags.push({ flag, ph: Math.random() * 6 });
+      V.set(p.x, tr.heightAt(p.x, p.z), p.z);
+      poles.push(V.clone());
+      flags.push({ pos: V.clone(), yaw: p.heading + Math.PI / 2, k: flags.length % 3, ph: Math.random() * 6 });
     }
-    anim.push((dt, t) => { for (const f of flags) f.flag.rotation.y = Math.sin(t * 2.2 + f.ph) * 0.35; });
+    // Instanziert: alle Masten = 1 Aufruf, Fahnen = 3 (eine pro Farbe); Wehen per Matrix-Update
+    if (flags.length) {
+      const pm = new THREE.InstancedMesh(poleG, poleM, poles.length);
+      poles.forEach((v, i) => { M.compose(v, Q.identity(), S.set(1, 1, 1)); pm.setMatrixAt(i, M); });
+      pm.castShadow = true; group.add(pm);
+      const fm = fMats.map((m, k) => { const n = flags.filter(f => f.k === k).length; const im = new THREE.InstancedMesh(flagG, m, Math.max(1, n)); im.count = n; im.castShadow = true; im.frustumCulled = false; group.add(im); return im; });
+      const idx = [0, 0, 0];
+      for (const f of flags) f.slot = idx[f.k]++;
+      anim.push((dt, t) => {
+        for (const f of flags) { E.set(0, f.yaw + Math.sin(t * 2.2 + f.ph) * 0.35, 0); Q.setFromEuler(E); M.compose(f.pos, Q, S.set(1, 1, 1)); fm[f.k].setMatrixAt(f.slot, M); }
+        for (const im of fm) im.instanceMatrix.needsUpdate = true;
+        Q.identity();
+      });
+    }
   }
 
   // ---------- Tribuene mit Zuschauern am Start
@@ -194,6 +208,7 @@ export function buildRaceDeco(race) {
       st.position.set(p.x, tr.heightAt(p.x, p.z), p.z);
       st.rotation.y = p.heading + (side > 0 ? -Math.PI / 2 : Math.PI / 2);
       st.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      mergeStatic(st); // Tribuene (ohne die huepfenden Zuschauer) in wenige Aufrufe
       group.add(st);
       crowd = { bodies, heads, people };
       anim.push((dt, t) => {

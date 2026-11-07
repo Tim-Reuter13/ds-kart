@@ -374,7 +374,7 @@ export function buildWorld(scene, track, data, extra, quality) {
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
     geo.setIndex(idx); geo.computeVertexNormals();
-    const tex = paintMap(data, ext, 4096, style);
+    const tex = paintMap(data, ext, (quality && quality.tex) || 4096, style);
     tex.flipY = true;
     const terrain = new THREE.Mesh(geo, detailMaterial(tex));
     terrain.receiveShadow = true;
@@ -475,7 +475,7 @@ export function buildWorld(scene, track, data, extra, quality) {
       im.castShadow = true; im.receiveShadow = true;
       group.add(im);
     };
-    const hedgeG = new RoundedBoxGeometry(0.95, 1.25, 2.75, 2, 0.35); hedgeG.translate(0, 0.62, 0);
+    const hedgeG = new RoundedBoxGeometry(0.95, 1.25, 2.75, 1, 0.3); // 1 Segment: 108 statt 300 Dreiecke pro Hecke hedgeG.translate(0, 0.62, 0);
     inst(hedgeG, std("#ffffff", { roughness: 1 }), items.hedge, () => pick(["#3f7a30", "#477f34", "#3a7029", "#4d8a38"]));
     const fenceParts = [];
     const post = new THREE.BoxGeometry(0.12, 1.05, 0.12);
@@ -876,15 +876,25 @@ export function buildWorld(scene, track, data, extra, quality) {
       hills.push(g);
     }
     addMerged(hills, new THREE.MeshLambertMaterial({ vertexColors: true }), { recv: false });
-    const cloudMat = new THREE.SpriteMaterial({ map: T.smoke(), color: "#ffffff", transparent: true, opacity: 0.95, depthWrite: false, fog: false });
+    // Wolken: alle 168 Billboards in EINEM Zeichenaufruf (vorher je ein Sprite = 168 Aufrufe pro Ansicht)
+    const cloudMat = new THREE.MeshBasicMaterial({ map: T.smoke(), color: "#ffffff", transparent: true, opacity: 0.95, depthWrite: false, fog: false });
+    cloudMat.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace("#include <project_vertex>", `
+        vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        mvPosition.xy += position.xy * vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz));
+        gl_Position = projectionMatrix * mvPosition;`);
+    };
+    const NC = 28 * 6, clouds = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), cloudMat, NC);
+    const cM = new THREE.Matrix4(), cS = new THREE.Vector3(), cP = new THREE.Vector3(), cQ = new THREE.Quaternion();
+    let ci = 0;
     for (let i = 0; i < 28; i++) {
-      const c = new THREE.Group();
       const a = Math.random() * Math.PI * 2, R = rnd(400, 1100);
-      for (let k = 0; k < 6; k++) { const sp = new THREE.Sprite(cloudMat); const s = rnd(60, 130); sp.scale.set(s * 1.7, s, 1); sp.position.set(rnd(-80, 80), rnd(-12, 18), rnd(-40, 40)); c.add(sp); }
-      c.position.set(cx0 + Math.cos(a) * R, rnd(220, 340), cz0 + Math.sin(a) * R);
-      group.add(c);
-      anim.push(dt => { c.position.x += dt * 2.5; });
+      const gx = cx0 + Math.cos(a) * R, gy = rnd(220, 340), gz = cz0 + Math.sin(a) * R;
+      for (let k = 0; k < 6; k++) { const s = rnd(60, 130); cS.set(s * 1.7, s, 1); cP.set(gx + rnd(-80, 80), gy + rnd(-12, 18), gz + rnd(-40, 40)); cM.compose(cP, cQ, cS); clouds.setMatrixAt(ci++, cM); }
     }
+    clouds.frustumCulled = false; clouds.renderOrder = -1;
+    group.add(clouds);
+    anim.push(dt => { clouds.position.x += dt * 2.5; });
   }
 
   const ctx = { group, track, data, blds, anim, inBuilding, ribbon, T, half, colorize, addMerged, flatPoly, centroid, po, heightAt: H };

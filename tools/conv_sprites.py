@@ -13,7 +13,10 @@ for sid, folder in zip(args[0::2], args[1::2]):
     out = os.path.join(ROOT, "site", "sprites", sid)
     os.makedirs(out, exist_ok=True)
     states = {}
-    for st, a in man["animations"].items():
+    # Zu-Fuss-Pakete: "laufen" wird zum Standardzustand "fahren", "stehen" bleibt extra
+    alias = {v: k for k, v in (man.get("stateAliases") or {}).items() if k == "fahren"}
+    for st0, a in man["animations"].items():
+        st = alias.get(st0, st0)
         im = Image.open(os.path.join(src, a["atlas"])).convert("RGBA")
         im.save(os.path.join(out, st + ".webp"), quality=88, alpha_quality=95, method=6)
         frames = {}
@@ -21,7 +24,9 @@ for sid, folder in zip(args[0::2], args[1::2]):
             frames.setdefault(str(fr["angle"]), []).append(fr["rect"][:2])
         states[st] = {"file": st + ".webp", "w": im.width, "h": im.height, "dur": a["frameDurationMs"], "frames": frames}
         print(sid, st, im.size, os.path.getsize(os.path.join(out, st + ".webp")) // 1024, "KB")
-    json.dump({"pivot": man["suggestedPivot"], "cell": man["cellSize"][0], "states": states},
+    spec = {"pivot": man["suggestedPivot"], "cell": man["cellSize"][0], "states": states}
+    if man.get("onFoot"): spec["foot"] = True
+    json.dump(spec,
               open(os.path.join(out, "sprite.json"), "w"), separators=(",", ":"))
     p = Image.open(os.path.join(src, man["portrait"])).convert("RGBA")
     p.thumbnail((256, 256), Image.LANCZOS)
