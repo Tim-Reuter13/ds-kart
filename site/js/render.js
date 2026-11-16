@@ -7,10 +7,12 @@ import { UnrealBloomPass } from "../vendor/jsm/postprocessing/UnrealBloomPass.js
 import { OutputPass } from "../vendor/jsm/postprocessing/OutputPass.js";
 
 export const QUALITY = {
-  low:    { name: "Niedrig", pr: 0.75, shadows: false, shadowSize: 1024, post: false, bloom: false, extras: 0.35, tex: 2048 },
-  medium: { name: "Mittel",  pr: 1.0,  shadows: true,  shadowSize: 1024, post: true,  bloom: false, extras: 0.7, tex: 2048 },
-  high:   { name: "Hoch",    pr: 1.25, shadows: true,  shadowSize: 2048, post: true,  bloom: true,  extras: 1.0 },
-  ultra:  { name: "Ultra",   pr: 2.0,  shadows: true,  shadowSize: 4096, post: true,  bloom: true,  extras: 1.3 },
+  // budget = hoechstens so viele Megapixel rechnet die Grafikkarte pro Bild (egal wie gross der Fernseher ist).
+  // Ein 4K-Fernseher mit 150 % Skalierung waeren sonst ~6 Megapixel - das ist der haeufigste Grund fuer Ruckeln.
+  low:    { name: "Niedrig", pr: 0.75, shadows: false, shadowSize: 1024, post: false, bloom: false, extras: 0.35, tex: 2048, budget: 0.9 },
+  medium: { name: "Mittel",  pr: 1.0,  shadows: true,  shadowSize: 1024, post: true,  bloom: false, extras: 0.7, tex: 2048, budget: 1.5 },
+  high:   { name: "Hoch",    pr: 1.25, shadows: true,  shadowSize: 2048, post: true,  bloom: true,  extras: 1.0, budget: 2.3 },
+  ultra:  { name: "Ultra",   pr: 2.0,  shadows: true,  shadowSize: 4096, post: true,  bloom: true,  extras: 1.3, budget: 4.2 },
 };
 
 const GradeShader = {
@@ -46,7 +48,8 @@ export class Pipeline {
   constructor(renderer) {
     this.renderer = renderer;
     this.level = "high";
-    this.scale = 1; // automatische Aufloesung (AutoRes in perf.js), 0.5..1
+    this.scale = 1; // automatische Aufloesung (AutoRes in perf.js), 0.4..1
+    this.views = 1; this.econ = false; // econ = Splitscreen ab 3 Spielern: ohne Bloom, weniger Kantenglaettung, kleineres Pixel-Budget
     try { this.level = localStorage.getItem("dskart_quality") || "high"; } catch (e) {}
     if (!QUALITY[this.level]) this.level = "high";
     this.build();
@@ -61,21 +64,35 @@ export class Pipeline {
   setScale(s) {
     if (Math.abs(s - this.scale) < 0.001) return;
     this.scale = s;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.q.pr) * s);
+    this.applyPR();
+  }
+  setViews(n) {
+    const econ = n >= 3;
+    this.views = n;
+    if (econ !== this.econ) { this.econ = econ; this.build(); } else this.applyPR();
+  }
+  // Pixeldichte = min(Geraet, Stufe) * AutoRes-Faktor, aber nie mehr als das Pixel-Budget erlaubt
+  applyPR() {
+    const r = this.renderer, q = this.q, el = r.domElement;
+    const W = el.clientWidth || innerWidth, H = el.clientHeight || innerHeight;
+    let pr = Math.min(devicePixelRatio || 1, q.pr) * this.scale;
+    pr = Math.min(pr, Math.sqrt(q.budget * 1e6 * (this.econ ? 0.8 : 1) / Math.max(1, W * H)));
+    pr = Math.max(0.3, pr);
+    if (Math.abs(r.getPixelRatio() - pr) > 0.001) r.setPixelRatio(pr);
     this.resize();
   }
   build() {
     const r = this.renderer, q = this.q;
-    r.setPixelRatio(Math.min(devicePixelRatio || 1, q.pr) * this.scale);
     r.shadowMap.enabled = q.shadows;
     if (this.composer) { this.composer.dispose(); this.composer = null; }
+    this.applyPR();
     if (!q.post) return;
     const size = r.getDrawingBufferSize(new THREE.Vector2());
-    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+    const rt = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: this.econ ? 2 : 4 });
     this.composer = new EffectComposer(r, rt);
-    this.views = new ViewsPass();
-    this.composer.addPass(this.views);
-    if (q.bloom) { this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.5, 1.05); this.composer.addPass(this.bloom); }
+    this.viewsPass = new ViewsPass();
+    this.composer.addPass(this.viewsPass);
+    if (q.bloom && !this.econ) { this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.5, 0.5, 1.05); this.composer.addPass(this.bloom); }
     this.grade = new ShaderPass(GradeShader);
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
@@ -89,7 +106,7 @@ export class Pipeline {
   // draw(target|null): zeichnet alle Ansichten (target = Zwischenbild oder Bildschirm)
   render(draw) {
     if (!this.composer) { draw(null); return; }
-    this.views.draw = draw;
+    this.viewsPass.draw = draw;
     this.composer.render();
   }
 }

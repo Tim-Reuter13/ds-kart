@@ -120,34 +120,56 @@ export class AutoRes {
   }
   // neues Rennen / andere Anzahl Ansichten: gemerkten Faktor fuer diese Situation laden
   reset(views) {
+    this.views = views;
     this.key = "dskart_res_" + this.p.level + "_" + views;
     let s = 1;
     try { s = parseFloat(localStorage.getItem(this.key)) || 1; } catch (e) {}
-    this.frames = []; this.gpu = []; this.cool = 2.5;
+    this.frames = []; this.gpu = []; this.cool = 2.5; this.win = 0; this.slowN = 0;
     this.p.setScale(Math.min(1, s + 0.1)); // mit etwas Luft nach oben starten, falls es beim letzten Mal nur ein Ausreisser war
   }
-  // jedes Bild waehrend des Rennens
-  tick(dt) {
+  // jedes Bild waehrend des Rennens; ms = ECHTE Bildzeit (nicht die fuer die Physik gekappte)
+  tick(ms, cpuMs = 0) {
     this.poll();
-    if (!this.on || document.hidden || dt >= 0.049) return; // Hintergrund-Tab / einzelne Haenger nicht mitzaehlen
-    this.frames.push(dt * 1000);
-    this.cool -= dt;
-    if (this.cool > 0 || this.frames.length < 50) return;
+    if (!this.on || document.hidden) return;
+    this.frames.push(Math.min(ms, 1000)); (this.cpu ||= []).push(cpuMs);
+    this.cool -= ms / 1000; this.win += ms / 1000;
+    // Auswertung nach Zeit (nicht nach Bildanzahl) - bei 5 Bildern/s soll es nicht ewig dauern
+    if (this.cool > 0 || this.win < 1.2 || this.frames.length < 6) return;
     const med = (a) => { const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; };
-    const f = med(this.frames), g = this.gpu.length >= 15 ? med(this.gpu) : null;
-    this.frames = []; this.gpu = [];
+    const f = med(this.frames), g = this.gpu.length >= 5 ? med(this.gpu) : null, c = med(this.cpu);
+    this.frames = []; this.gpu = []; this.cpu = []; this.win = 0;
+    this.last = { f, g, c };
     const s = this.p.scale;
     let ns = s;
-    // zu langsam (unter ~55 Bilder/s): nur runter, wenn es an der Grafikkarte liegt (bzw. wenn wir es nicht messen koennen)
-    if (f > 18.5 && (g === null || g > 13)) ns = s - (f > 26 ? 0.15 : 0.1);
-    // Luft nach oben: GPU hat deutlich Reserve
-    else if (g !== null && g < 8.5 && f < 18 && s < 1) ns = s + 0.1;
-    ns = Math.max(0.5, Math.min(1, Math.round(ns * 20) / 20));
+    const slow = f > 21; // unter ~48 Bilder/s
+    // Wer bremst? Grafikkarte (GPU-Zeit gross) oder Prozessor (unser JS gross). Ist beides klein, haengt es nur am
+    // Bildschirm-Takt (z.B. 4K-Fernseher mit 30 Hz) - dann nichts verschlechtern.
+    // Unter ~22 Bildern/s ist es nie nur der Bildschirm-Takt -> dann auf jeden Fall handeln (GPU-Timer luegen manchmal)
+    const gpuBound = g === null || f > 45 ? c < f * 0.6 : (g > 14 || g > f * 0.55);
+    const cpuBound = c > f * 0.6;
+    if (slow && (gpuBound || cpuBound)) {
+      this.slowN++;
+      if (gpuBound && s > 0.4) ns = s - (f > 60 ? 0.3 : f > 35 ? 0.2 : f > 26 ? 0.15 : 0.1);
+      else if (this.slowN >= 2) this.downgrade(f); // Aufloesung ist schon unten bzw. es liegt am Prozessor
+    } else {
+      this.slowN = 0;
+      if (g !== null && g < 8.5 && f < 18 && s < 1) ns = s + 0.1; // Grafikkarte hat deutlich Reserve
+    }
+    ns = Math.max(0.4, Math.min(1, Math.round(ns * 20) / 20));
     if (ns !== s) {
       this.p.setScale(ns);
       try { localStorage.setItem(this.key, String(ns)); } catch (e) {}
-      this.cool = ns < s ? 1.5 : 4;
-    } else this.cool = 1.5;
+      this.cool = ns < s ? 1 : 4;
+    } else this.cool = 1;
+  }
+  // eine Grafikstufe runter (bleibt gespeichert), z.B. Schatten aus - hilft auch, wenn der Prozessor bremst
+  downgrade(f) {
+    const L = ["low", "medium", "high", "ultra"], i = L.indexOf(this.p.level);
+    if (i <= 0) return;
+    this.p.setLevel(L[i - 1]);
+    this.slowN = 0; this.cool = 2.5;
+    this.key = "dskart_res_" + this.p.level + "_" + (this.views || 1);
+    if (this.onLevel) this.onLevel(this.p.level, f);
   }
 }
 

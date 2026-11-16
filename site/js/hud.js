@@ -24,7 +24,7 @@ export class HUD {
   message(racer, text, t = 1.6, color = "#fff", sub = "") { this.msgs.set(racer, { text, t, max: t, color, sub }); }
 
   draw(race, views, dt) {
-    const g = this.g, dpr = devicePixelRatio || 1;
+    const g = this.g, dpr = this.c.width / (innerWidth || 1); // HUD-Aufloesung ist begrenzt (siehe main.js resize)
     const W = this.c.width / dpr, H = this.c.height / dpr;
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, W, H);
@@ -223,7 +223,7 @@ export class HUD {
   }
 
   drawReplay(caption, i, n, prog) {
-    const g = this.g, dpr = devicePixelRatio || 1, W = this.c.width / dpr, H = this.c.height / dpr;
+    const g = this.g, dpr = this.c.width / (innerWidth || 1), W = this.c.width / dpr, H = this.c.height / dpr;
     g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
     const bar = H * 0.1, u = Math.min(W, H * 1.6) / 900;
     g.fillStyle = "#000"; g.fillRect(0, 0, W, bar); g.fillRect(0, H - bar, W, bar);

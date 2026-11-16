@@ -31,6 +31,49 @@ const pipeline = new Pipeline(renderer);
 window.__pipeline = pipeline;
 const autoRes = new AutoRes(renderer, pipeline);
 window.__autoRes = autoRes;
+
+// ---------- Welche Grafikkarte nutzt der Browser? (haeufigster Grund fuer 5 FPS: gar nicht die richtige)
+const GPU = (() => {
+  try { const gl = renderer.getContext(), d = gl.getExtension("WEBGL_debug_renderer_info"); return d ? String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL)) : ""; } catch (e) { return ""; }
+})();
+const gpuShort = GPU.replace(/^ANGLE \(/, "").replace(/\(0x[0-9a-f]+\)|Direct3D.*$|vs_\d.*$|, D3D\d+.*$/gi, "").replace(/\s+/g, " ").replace(/,\s*$/, "").trim();
+const SOFTWARE = /swiftshader|llvmpipe|software|basic render|microsoft basic/i.test(GPU);
+const ONBOARD = !SOFTWARE && /intel|uhd graphics|iris|radeon\(tm\) graphics|radeon graphics|vega \d/i.test(GPU) && !/nvidia|geforce|rtx|gtx|radeon rx|arc a/i.test(GPU);
+function notice(html, ms = 6000) {
+  let n = document.querySelector("#notice");
+  if (!n) { n = document.createElement("div"); n.id = "notice"; document.body.appendChild(n); n.onclick = () => n.classList.remove("on"); }
+  n.innerHTML = html; n.classList.add("on");
+  clearTimeout(notice.t); if (ms) notice.t = setTimeout(() => n.classList.remove("on"), ms);
+}
+if (SOFTWARE) {
+  if (pipeline.level !== "low") pipeline.setLevel("low");
+  addEventListener("load", () => notice(`⚠️ <b>Der Browser rechnet ohne Grafikkarte</b> (${gpuShort || "Software"}) – deshalb ruckelt es.<br>Chrome: Einstellungen → System → „Grafikbeschleunigung verwenden, wenn verfügbar“ einschalten und Chrome neu starten.`, 0));
+} else if (ONBOARD) {
+  addEventListener("load", () => notice(`⚠️ <b>Chrome nutzt die Onboard-Grafik</b> (${gpuShort}).<br>Hat der PC eine NVIDIA/AMD-Karte? Bildschirm an die Grafikkarte anstecken (nicht ans Mainboard) und in Windows: Einstellungen → System → Anzeige → Grafik → Chrome → „Hohe Leistung“.`, 0));
+}
+// Automatisch eine Grafikstufe runter, wenn es trotz kleinster Aufloesung ruckelt
+autoRes.onLevel = (lv, f) => {
+  if (state.race) state.race.scene.traverse(o => { const m = o.material; if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true; });
+  notice(`🎮 Grafik automatisch auf <b>${QUALITY[lv].name}</b> gestellt (lief mit ${Math.round(1000 / f)} Bildern/s).`, 4500);
+};
+
+// ---------- FPS-Anzeige (Taste F3 oder Einstellungen)
+let showFps = false; try { showFps = localStorage.getItem("dskart_fps") === "1"; } catch (e) {}
+const fpsEl = document.createElement("div"); fpsEl.id = "fps"; document.body.appendChild(fpsEl);
+const fpsStat = { n: 0, t: 0, worst: 0 };
+function setFps(on) { showFps = on; fpsEl.style.display = on ? "block" : "none"; try { localStorage.setItem("dskart_fps", on ? "1" : "0"); } catch (e) {} }
+setFps(showFps);
+addEventListener("keydown", (e) => { if (e.code === "F3") { e.preventDefault(); setFps(!showFps); } });
+function fpsTick(ms) {
+  if (!showFps) return;
+  fpsStat.n++; fpsStat.t += ms; fpsStat.worst = Math.max(fpsStat.worst, ms);
+  if (fpsStat.t < 500) return;
+  const fps = Math.round(fpsStat.n * 1000 / fpsStat.t), el = renderer.domElement, L = autoRes.last;
+  fpsEl.innerHTML = `<b style="color:${fps >= 50 ? "#6aff7a" : fps >= 30 ? "#ffd23a" : "#ff6a5a"}">${fps} FPS</b> · schlechtestes Bild ${Math.round(fpsStat.worst)} ms<br>`
+    + `${el.width}×${el.height} (${Math.round(pipeline.scale * 100)} %) · ${QUALITY[pipeline.level].name}${pipeline.econ ? " · Splitscreen-Sparmodus" : ""}`
+    + (L ? `<br>CPU ${L.c.toFixed(1)} ms · GPU ${L.g == null ? "?" : L.g.toFixed(1) + " ms"}` : "") + `<br>${gpuShort || "Grafikkarte unbekannt"}`;
+  fpsStat.n = 0; fpsStat.t = 0; fpsStat.worst = 0;
+}
 const hudCanvas = $("#hud");
 const hud = new HUD(hudCanvas);
 const audio = new Audio();
@@ -40,9 +83,10 @@ let audioUI = null;
 
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
-  const dpr = devicePixelRatio || 1;
-  hudCanvas.width = innerWidth * dpr; hudCanvas.height = innerHeight * dpr;
-  if (window.__pipeline) window.__pipeline.resize();
+  // HUD (2D-Leinwand, wird jedes Bild neu gezeichnet) hoechstens in Full-HD-Pixelmenge - auf 4K-Fernsehern sonst sehr teuer
+  const dpr = Math.min(devicePixelRatio || 1, Math.sqrt(2.1e6 / Math.max(1, innerWidth * innerHeight)));
+  hudCanvas.width = Math.round(innerWidth * dpr); hudCanvas.height = Math.round(innerHeight * dpr);
+  if (window.__pipeline) window.__pipeline.applyPR(); // Pixel-Budget haengt von der Fenstergroesse ab
 }
 addEventListener("resize", resize); resize();
 
@@ -180,12 +224,15 @@ function renderSettings() {
   $("#sQ").innerHTML = Object.keys(QUALITY).map(k => `<button class="btn ${pipeline.level === k ? "sel" : ""}" data-q="${k}">${QUALITY[k].name}</button>`).join("");
   $("#sMus").value = vol.mus; $("#sSfx").value = vol.sfx;
   $("#sTest").textContent = FAMILY ? "Test ✓" : "Test";
+  $("#sFps").textContent = showFps ? "FPS-Anzeige ✓" : "FPS-Anzeige";
+  $("#sGpu").textContent = "Grafikkarte im Browser: " + (gpuShort || "unbekannt") + (SOFTWARE ? " ⚠️ ohne Hardwarebeschleunigung" : ONBOARD ? " ⚠️ Onboard-Grafik" : "");
 }
 $("#toSettings").onclick = () => { renderSettings(); show("settings"); };
 $("#sBack").onclick = () => { show("lobby"); renderLobby(); };
 $("#sQ").addEventListener("click", e => { const c = e.target.closest("[data-q]"); if (c) { pipeline.setLevel(c.dataset.q); renderSettings(); } });
 for (const [id, k] of [["#sMus", "mus"], ["#sSfx", "sfx"]]) $(id).addEventListener("input", e => { vol[k] = +e.target.value; try { localStorage.setItem("dskart_vol", JSON.stringify(vol)); } catch (x) {} applyVol(); audio.sfx(k === "sfx" ? "pfand" : "select"); });
 $("#sTest").onclick = () => setFamily(!FAMILY);
+$("#sFps").onclick = () => { setFps(!showFps); renderSettings(); };
 addEventListener("pointerdown", () => applyVol(), { once: true });
 
 // bereit = alle verbundenen Spieler haben gewaehlt; getrennte Handys ohne Wahl werden dann weggelassen
@@ -223,6 +270,7 @@ async function startRace() {
   const players = state.players.map(p => ({ dev: p.dev, driver: DRIVERS[p.di].id }));
   state.race = new Race({ sprites, renderer, pipeline, hud, audio, net, inputs, def, data: cache[def.id], players, cls: state.cls, laps: state.laps, onEnd: showResults });
   window.__race = state.race;
+  pipeline.setViews(Math.max(1, players.length));
   autoRes.reset(Math.max(1, players.length));
   if (new URLSearchParams(location.search).has("auto")) state.race.autopilot = true;
   show("race");
@@ -353,14 +401,17 @@ audioUI = initAudioUI({ audio, net, show: (id) => { show(id); if (id === "lobby"
 // ---------------- Schleife
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const ms = now - last, dt = Math.min(0.05, ms / 1000); last = now;
   menuInput();
   if (state.race && (state.screen === "race" || state.screen === "pause")) {
+    const t0 = performance.now();
     state.race.update(dt);
     autoRes.begin();
     state.race.render(dt);
     autoRes.end();
-    if (state.screen === "race") autoRes.tick(dt); else autoRes.poll();
+    const cpu = performance.now() - t0;
+    if (state.screen === "race") autoRes.tick(ms, cpu); else autoRes.poll();
+    fpsTick(ms);
   }
   requestAnimationFrame(frame);
 }
