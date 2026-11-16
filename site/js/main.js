@@ -4,7 +4,7 @@ import { HUD } from "./hud.js";
 import { Audio } from "./audio.js";
 import { Net } from "./net.js";
 import { Inputs, devLabel } from "./input.js";
-import { DRIVERS } from "./cars.js";
+import { DRIVERS, statBarsHTML, statLevels } from "./cars.js";
 import { CLASSES } from "./kart.js";
 import { TRACKS } from "./tracks.js";
 import { RoomEnvironment } from "../vendor/RoomEnvironment.js";
@@ -93,7 +93,7 @@ addEventListener("resize", resize); resize();
 const state = {
   screen: "title",
   players: [],            // {dev, di (Fahrer-Index), ready}
-  track: 0, cls: "golf", laps: 3,
+  ...(() => { try { const o = JSON.parse(localStorage.getItem("dskart_setup")) || {}; return { track: o.track ?? 0, cls: o.cls || "golf", laps: o.laps || 3 }; } catch (e) { return { track: 0, cls: "golf", laps: 3 }; } })(),
   race: null,
   focus: { row: 0, col: 0 },
   lastResults: null,
@@ -150,7 +150,7 @@ net.on("pick", (id, driver) => {
   const other = state.players.find(o => o !== p && o.di === di);
   // bereits fest gewaehlt -> Pech; nur vorbelegt (noch nicht bereit) -> der andere rutscht weiter
   if (other && other.ready) { net.send(id, { t: "toast", text: DRIVERS[di].name + " ist schon vergeben." }); sendLobby(); return; }
-  p.di = di; p.ready = true; audio.sfx("confirm");
+  p.di = di; p.ready = true; savePref(p); audio.sfx("confirm");
   if (other) other.di = freeDriver(di + 1, 1, other);
   renderLobby(); sendLobby();
 });
@@ -158,12 +158,20 @@ function sendLobby() {
   for (const p of state.players) {
     if (!p.dev.startsWith("ph")) continue;
     net.send(p.dev, { t: "lobby", mine: DRIVERS[p.di]?.id, ready: p.ready,
-      drivers: DRIVERS.map((d, i) => ({ id: d.id, name: d.name, car: d.car, color: d.hud, taken: state.players.some(o => o !== p && o.di === i && o.ready) })) });
+      drivers: DRIVERS.map((d, i) => ({ id: d.id, name: d.name, car: d.car, color: d.hud, trait: d.trait || "", st: statLevels(d), taken: state.players.some(o => o !== p && o.di === i && o.ready) })) });
   }
 }
 setInterval(() => { $("#netst").textContent = "Handy-Verbindung: " + net.status + (net.code ? " · Code " + net.code : ""); $("#netmsg").textContent = net.status === "bereit" ? "" : net.status; }, 500);
 
+if (!(state.track >= 0 && state.track <= TRACKS.length)) state.track = 0;
+if (!CLASSES[state.cls]) state.cls = "golf";
+if (![2, 3, 5].includes(state.laps)) state.laps = 3;
+
 // ---------------- Lobby
+// Jedes Geraet bekommt beim naechsten Mal wieder seinen Fahrer (Handys ueber ihr Token, Tastatur/Controller ueber den Platz)
+const PREF = (() => { try { return JSON.parse(localStorage.getItem("dskart_pref")) || {}; } catch (e) { return {}; } })();
+const prefKey = (dev) => dev.startsWith("ph") ? "t:" + (net.phone(dev)?.token || dev) : dev;
+function savePref(p) { const d = DRIVERS[p.di]; if (!d) return; PREF[prefKey(p.dev)] = d.id; try { localStorage.setItem("dskart_pref", JSON.stringify(PREF)); } catch (e) {} }
 function freeDriver(from = 0, dir = 1, self = null) {
   for (let k = 0; k < DRIVERS.length; k++) {
     const i = ((from + k * dir) % DRIVERS.length + DRIVERS.length) % DRIVERS.length;
@@ -173,7 +181,9 @@ function freeDriver(from = 0, dir = 1, self = null) {
 }
 function addPlayer(dev) {
   if (state.players.length >= 8) return;
-  state.players.push({ dev, di: freeDriver(state.players.length), ready: false });
+  const want = DRIVERS.findIndex(d => d.id === PREF[prefKey(dev)]);
+  const di = want >= 0 && !state.players.some(o => o.di === want) ? want : freeDriver(state.players.length);
+  state.players.push({ dev, di, ready: false });
   audio.sfx("confirm");
   renderLobby();
 }
@@ -189,7 +199,7 @@ function renderLobby() {
     html += `<div class="slot on ${p.ready ? "ready" : ""}" style="border-color:${p.ready ? "" : d.hud}">
       <div class="p" style="color:${d.hud}">P${i + 1}</div>
       ${d.portrait ? `<img src="${d.portrait}" alt="" style="width:92px;height:92px;object-fit:cover;border-radius:50%;border:3px solid ${d.hud};background:#0b1730">` : `<div class="swatch" style="background:${d.color}"></div>`}
-      <div class="nm">${d.name}</div><div class="car">${d.car}</div>
+      <div class="nm">${d.name}</div><div class="car">${d.car}</div>${d.trait ? `<div class="trait">${d.trait}</div>` : ""}${statBarsHTML(d)}
       <div class="dev">${name}${p.dev.startsWith("ph") ? (net.phone(p.dev)?.online ? (net.phone(p.dev).via === "relay" ? " ☁" : " 📶") : " · 📵 getrennt…") : ""}</div>
       <div class="arrows">${p.ready ? "✔ bereit" : p.dev.startsWith("ph") ? "wählt am Handy…" : "◀ ▶ wählen · OK"}</div></div>`;
   }
@@ -248,9 +258,24 @@ function toSetup() {
 
 // ---------------- Rennen
 const cache = {};
+const TIPS = [
+  "<b>Raketenstart:</b> Gas genau ab der „2“ halten – zu früh und der Motor säuft ab.",
+  "<b>Driften:</b> Drift halten, bis 🔥🔥🔥 kommt – je länger, desto größer der Boost.",
+  "<b>Windschatten:</b> Dicht hinter jemandem fahren lädt einen Gratis-Boost auf.",
+  "<b>Sprünge:</b> In der Luft kurz Drift tippen = Trick = Boost bei der Landung.",
+  "<b>Pfand:</b> Jede Flasche macht dich ein kleines bisschen schneller (bis 10 Stück).",
+  "<b>Hinten liegen lohnt sich:</b> Wer weit zurück ist, bekommt die stärkeren Items.",
+  "<b>Kamera:</b> Taste C, Controller-Select oder 🎥 am Handy wechselt die Ansicht.",
+  "<b>Ruckelt es?</b> F3 zeigt FPS und welche Grafikkarte der Browser benutzt.",
+  "<b>Handy weg?</b> Kein Stress – der Autopilot fährt weiter, bis du wieder da bist.",
+  "<b>Fahrerwahl:</b> Tempo, Beschleunigung, Handling und Gewicht siehst du als Balken.",
+  "<b>Letzte Runde:</b> Dann zählt jede Kurve – die schnellste Runde gibt eine Auszeichnung.",
+];
 async function startRace() {
   audio.ensure(); audio.sfx("confirm");
   show("load");
+  $("#tip").innerHTML = "💡 " + TIPS[(Math.random() * TIPS.length) | 0];
+  try { localStorage.setItem("dskart_setup", JSON.stringify({ track: state.track, cls: state.cls, laps: state.laps })); } catch (e) {}
   let ti = state.track;
   if (state.track === TRACKS.length) {
     if (!state.gp || state.gp.over) state.gp = { i: 0, pts: {}, over: false };
@@ -284,17 +309,20 @@ function showResults(res) {
   admitWaiting();
   const fmt = (t) => t == null ? "–" : `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, "0")}`;
   const best = res.find(r => r.human);
+  const fl = Math.min(...res.map(r => r.bestLap ?? 1e9));
+  const lapTd = (r) => `<td class="small" title="beste Runde">${r.bestLap == null ? "" : (r.bestLap === fl ? "⏱⭐ " : "⏱ ") + fmt(r.bestLap)}</td>`;
+  $("#awards").innerHTML = (state.race?.awards?.() || []).map(a => `<div class="aw"><div class="k">${a.k}</div><div>${a.who}</div><div class="v">${a.v}</div></div>`).join("");
   if (state.gp) {
     const gp = state.gp;
     for (const r of res) gp.pts[r.driver] = (gp.pts[r.driver] || 0) + (GP_PTS[r.place - 1] || 0);
     const last = gp.i >= TRACKS.length - 1;
     const stand = Object.entries(gp.pts).sort((a, b) => b[1] - a[1]);
     $("#resTitle").textContent = `Grand Prix · Rennen ${gp.i + 1}/${TRACKS.length} · ${TRACKS[gp.i].name}`;
-    $("#resTable").innerHTML = res.map(r => `<tr class="${r.human ? "me" : ""}"><td class="pl">${r.place}.</td><td>${avatar(r.driver, r.color)}${r.name}</td><td>${fmt(r.time)}</td><td style="color:#6aff7a">+${GP_PTS[r.place - 1] || 0}</td><td style="font-family:'Lilita One';font-size:24px">${gp.pts[r.driver]} P</td><td class="small">${stand.findIndex(s => s[0] === r.driver) + 1}. gesamt</td></tr>`).join("");
+    $("#resTable").innerHTML = res.map(r => `<tr class="${r.human ? "me" : ""}"><td class="pl">${r.place}.</td><td>${avatar(r.driver, r.color)}${r.name}</td><td>${fmt(r.time)}</td>${lapTd(r)}<td style="color:#6aff7a">+${GP_PTS[r.place - 1] || 0}</td><td style="font-family:'Lilita One';font-size:24px">${gp.pts[r.driver]} P</td><td class="small">${stand.findIndex(s => s[0] === r.driver) + 1}. gesamt</td></tr>`).join("");
     RES_BTNS = last ? [["Siegerehrung 🏆", () => podium()]] : [["Nächstes Rennen ▶", () => { gp.i++; startRace(); }], ["Grand Prix abbrechen", () => { state.gp = null; show("setup"); renderSetup(); }]];
   } else {
     $("#resTitle").textContent = best ? (best.place === 1 ? `🏆 ${best.name} gewinnt!` : `${best.name}: ${best.place}. Platz`) : "Ergebnis";
-    $("#resTable").innerHTML = res.map(r => `<tr class="${r.human ? "me" : ""}"><td class="pl">${r.place}.</td><td>${avatar(r.driver, r.color)}${r.name}</td><td class="small">${r.car}</td><td>${fmt(r.time)}</td><td class="small">${FAMILY ? "♻️" : "🍾"} ${(r.pfand * 0.25).toFixed(2).replace(".", ",")} €</td></tr>`).join("");
+    $("#resTable").innerHTML = res.map(r => `<tr class="${r.human ? "me" : ""}"><td class="pl">${r.place}.</td><td>${avatar(r.driver, r.color)}${r.name}</td><td class="small">${r.car}</td><td>${fmt(r.time)}</td>${lapTd(r)}<td class="small">${FAMILY ? "♻️" : "🍾"} ${(r.pfand * 0.25).toFixed(2).replace(".", ",")} €</td></tr>`).join("");
     RES_BTNS = SINGLE_BTNS;
   }
   state.focus = { row: 0, col: 0 };
@@ -302,6 +330,7 @@ function showResults(res) {
 }
 function podium() {
   const gp = state.gp; gp.over = true;
+  $("#awards").innerHTML = "";
   const stand = Object.entries(gp.pts).sort((a, b) => b[1] - a[1]);
   const D = (id) => DRIVERS.find(d => d.id === id);
   const top = [stand[1], stand[0], stand[2]].filter(Boolean);
@@ -323,7 +352,9 @@ function renderResults() {
   $("#resBtns").innerHTML = RES_BTNS.map(([n], i) => `<button class="btn ${state.focus.col === i ? "focus" : ""}" data-i="${i}">${n}</button>`).join("");
 }
 $("#resBtns").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) RES_BTNS[+b.dataset.i][1](); });
-const PAUSE_BTNS = [["Weiter", () => resume()], ["Neustart", () => startRace()], ["Beenden", () => { if (state.race) { state.race.dispose(); state.race = null; } show("setup"); renderSetup(); }]];
+const quitRace = () => { if (state.race) { state.race.dispose(); state.race = null; } audio.stopMusic(); };
+const PAUSE_BTNS = [["Weiter", () => resume()], ["Neustart", () => startRace()], ["Andere Strecke", () => { quitRace(); show("setup"); renderSetup(); }],
+  ["Fahrer wechseln", () => { quitRace(); for (const p of state.players) p.ready = false; show("lobby"); renderLobby(); sendLobby(); }]];
 function renderPause() { $("#pauseBtns").innerHTML = PAUSE_BTNS.map(([n], i) => `<button class="btn ${state.focus.col === i ? "focus" : ""}" data-i="${i}">${n}</button>`).join(""); }
 $("#pauseBtns").addEventListener("click", e => { const b = e.target.closest("[data-i]"); if (b) PAUSE_BTNS[+b.dataset.i][1](); });
 function pause() { if (!state.race) return; state.race.paused = true; audio.stopEngines(); state.focus = { row: 0, col: 0 }; show("pause"); renderPause(); }
@@ -347,7 +378,7 @@ function menuInput() {
       if (!p.ready) {
         if (e.left) { p.di = freeDriver(p.di - 1, -1, p); audio.sfx("select"); renderLobby(); sendLobby(); }
         if (e.right) { p.di = freeDriver(p.di + 1, 1, p); audio.sfx("select"); renderLobby(); sendLobby(); }
-        if (e.ok) { p.ready = true; audio.sfx("confirm"); renderLobby(); sendLobby(); }
+        if (e.ok) { p.ready = true; savePref(p); audio.sfx("confirm"); renderLobby(); sendLobby(); }
         if (e.cancel) { state.players = state.players.filter(q => q !== p); renderLobby(); sendLobby(); }
       } else {
         if (e.cancel) { p.ready = false; renderLobby(); sendLobby(); }

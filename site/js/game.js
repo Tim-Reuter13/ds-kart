@@ -23,6 +23,7 @@ const MSG = {
   pfandFull: [(FAMILY ? "♻️" : "🍾") + " 2,50 € Pfand – Maximum!"],
 };
 const pick = (a) => a[(Math.random() * a.length) | 0];
+const fmtT = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, "0")}`;
 
 // Kamera-Einstellungen (Taste C / N, Controller "Select", Handy-Knopf) - bleiben pro Geraet ueber Rennen hinweg
 export const CAMS = [
@@ -214,7 +215,9 @@ export class Race {
     this.catchUp(dt);
     // Eingaben (Handy weg -> Autopilot faehrt weiter, bis es wieder da ist)
     for (const r of this.racers) {
-      r.offline = r.human && (r.dev || "").startsWith("ph") && !this.net.phoneState(r.dev);
+      // Handy ohne Lebenszeichen (>0,9 s) oder Controller abgesteckt -> Autopilot faehrt weiter, bis es wieder da ist
+      r.offline = r.human && !this.inputs.alive(r.dev || "");
+      r.offT = r.offline ? (r.offT || 0) + dt : 0;
       if (r.human && (r.finished || this.autopilot || (r.offline && this.started))) { if (!r.ai) initAI(r, this.track); driveAI(r, this, dt); if (r.finished || r.offline) r.input.item = false; }
       else if (r.human) {
         const s = this.inputs.read(r.dev);
@@ -222,6 +225,7 @@ export class Race {
       } else driveAI(r, this, dt);
     }
     for (const r of this.racers) r.step(dt, this);
+    if (this.started) { this.laps_(); this.slipstream(dt); }
     this.deco.tick(dt);
     this.rec.tick(dt);
 
@@ -267,6 +271,61 @@ export class Race {
       this.hudSend = 0.25;
       for (const h of this.humans) if (h.dev && h.dev.startsWith("ph")) this.net.send(h.dev, { t: "hud", item: h.roulette > 0 ? "🎲" : h.item ? ITEMS[h.item].icon : "", place: h.place, lap: h.lap, laps: this.laps, pfand: h.pfand, n: this.racers.length });
     }
+  }
+
+  // Rundenzeiten, Bestzeit, "Letzte Runde!"
+  laps_() {
+    const L = this.track.L;
+    for (const r of this.racers) {
+      if (r.lapsSeen === undefined) { r.lapsSeen = 1; r.lapStart = 0; r.lapTimes = []; }
+      const lapNow = Math.floor(r.total / L) + 1;
+      if (lapNow <= r.lapsSeen || r.lapsSeen > this.laps) continue;
+      r.lapsSeen = lapNow;
+      const lt = this.time - r.lapStart; r.lapStart = this.time;
+      r.lapTimes.push(lt);
+      const pb = r.bestLap == null || lt < r.bestLap; if (pb) r.bestLap = lt;
+      if (!r.human || lapNow > this.laps) continue;
+      const f = fmtT(lt) + (pb && lapNow > 2 ? " · neue Bestzeit ⭐" : "");
+      if (lapNow === this.laps) { this.hud.banner(r, "LETZTE RUNDE!", 2.4, `Runde ${lapNow - 1}: ${f}`); this.sfx("lastlap"); }
+      else this.hud.message(r, `Runde ${lapNow}/${this.laps}`, 1.8, "#9fd8ff", f);
+    }
+  }
+
+  // Windschatten: dicht hinter jemandem herfahren laedt einen kleinen Boost auf
+  slipstream(dt) {
+    for (const r of this.racers) {
+      r.aw ||= { hits: 0, taken: 0, walls: 0, mega: 0, tricks: 0, slip: 0 };
+      if (r.air || r.respawnT > 0 || r.speed < 15 || r.boostT > 0 || r.finished || r.spinT > 0) { r.slipT = Math.max(0, (r.slipT || 0) - dt * 2); continue; }
+      const fx = Math.sin(r.heading), fz = Math.cos(r.heading);
+      let found = false;
+      for (const o of this.racers) {
+        if (o === r || o.respawnT > 0 || o.speed < 10 || Math.abs(o.y - r.y) > 2) continue;
+        const dx = o.x - r.x, dz = o.z - r.z, along = dx * fx + dz * fz;
+        if (along < 3 || along > 18) continue;
+        if (Math.abs(dx * fz - dz * fx) < 1.6 + along * 0.05) { found = true; break; }
+      }
+      if (found) {
+        r.slipT = (r.slipT || 0) + dt;
+        if (r.slipT > 1.4) { r.slipT = 0; r.boost(0.85); r.aw.slip++; r.events.push({ t: "slip" }); }
+      } else r.slipT = Math.max(0, (r.slipT || 0) - dt * 1.5);
+    }
+  }
+
+  // Auszeichnungen fuer den Ergebnis-Bildschirm
+  awards() {
+    const R = this.racers, out = [];
+    const top = (f) => { let b = null, bv = 0; for (const r of R) { const v = f(r); if (v > bv) { bv = v; b = r; } } return b ? [b, bv] : null; };
+    const fl = R.filter(r => r.bestLap != null).sort((a, b) => a.bestLap - b.bestLap)[0];
+    if (fl) out.push({ k: "⏱ Schnellste Runde", who: fl.driver.name, v: fmtT(fl.bestLap) });
+    const add = (k, f, v) => { const t = top(f); if (t) out.push({ k, who: t[0].driver.name, v: v(t[1]) }); };
+    add("🎯 Scharfschütze", r => r.aw?.hits || 0, n => `${n} Treffer verteilt`);
+    add("🧲 Kugelfang", r => r.aw?.taken || 0, n => `${n}× erwischt worden`);
+    add("🔥 Drift-König", r => r.aw?.mega || 0, n => `${n}× Mega-Drift 🔥🔥🔥`);
+    add("💨 Windschatten-Profi", r => r.aw?.slip || 0, n => `${n} Windschatten-Boosts`);
+    add("🤸 Stuntshow", r => r.aw?.tricks || 0, n => `${n} Tricks in der Luft`);
+    add(FAMILY ? "♻️ Sammelkönig" : "🍾 Pfandkönig", r => r.pfand || 0, n => `${(n * 0.25).toFixed(2).replace(".", ",")} € Pfand`);
+    add("🧱 Wandkuschler", r => r.aw?.walls || 0, n => `${n}× an der Bande`);
+    return out;
   }
 
   cycleCam(h) {
@@ -332,6 +391,9 @@ export class Race {
     for (const r of this.racers) {
       for (const e of r.events) {
         const hum = r.human;
+        const aw = (r.aw ||= { hits: 0, taken: 0, walls: 0, mega: 0, tricks: 0, slip: 0 });
+        if (e.t === "scored") aw.hits++; else if (e.t === "hit") aw.taken++; else if (e.t === "wall" || e.t === "crash") aw.walls++;
+        else if (e.t === "spark" && e.lvl >= 3) aw.mega++; else if (e.t === "trick") aw.tricks++;
         if (r.sprite) { if (e.t === "hit") r.sprite.play("schaden", 1.2); else if (e.t === "vape") r.sprite.play(FAMILY ? "werfen" : "vape"); else if (["throw", "drop", "camera", "siren", "doener", "lighter"].includes(e.t)) r.sprite.play("werfen"); }
         if (hum && RUMBLE[e.t] && r.dev?.startsWith("ph")) this.net.send(r.dev, { t: "rumble", ms: RUMBLE[e.t] });
         switch (e.t) {
@@ -346,6 +408,7 @@ export class Race {
           case "land": if (hum) { this.sfx("land"); r.shakeReq = Math.min(0.9, e.air); } break;
           case "scored": if (hum) { this.hud.message(r, `🎯 Treffer! ${e.victim.driver.name} erwischt`, 1.6, "#6aff7a"); if (r.dev?.startsWith("ph")) this.net.send(r.dev, { t: "rumble", ms: 60 }); } break;
           case "box": if (hum) this.sfx("box"); break;
+          case "slip": if (hum) this.hud.message(r, "💨 Windschatten-Boost!", 1.1, "#9fd8ff"); break;
           case "got": if (hum) { this.sfx("got"); this.say(r, "gotitem", 6); } break;
           case "boost": if (hum) { this.sfx("boost"); r.shakeReq = 0.6; this.say(r, "boost", 5); } break;
           case "spark": if (hum) { this.sfx("spark"); if (e.lvl >= 3) this.say(r, "drift", 6); } break;
@@ -528,7 +591,7 @@ export class Race {
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
       if (a.finished) return -1; if (b.finished) return 1;
       return b.total - a.total;
-    }).map((r, i) => ({ place: i + 1, name: r.driver.name, car: r.driver.car, human: r.human, color: r.driver.hud, time: r.finished ? r.finishTime : null, driver: r.driver.id, pfand: r.pfand }));
+    }).map((r, i) => ({ place: i + 1, name: r.driver.name, car: r.driver.car, human: r.human, color: r.driver.hud, time: r.finished ? r.finishTime : null, driver: r.driver.id, pfand: r.pfand, bestLap: r.bestLap ?? null }));
   }
 
   finish() {

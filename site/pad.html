@@ -34,6 +34,12 @@ input{font-size:20px;padding:14px;border-radius:14px;border:2px solid var(--line
 .drv .sw{height:8px;border-radius:4px;margin-bottom:8px}
 .drv.mine{border-color:var(--y)}
 .drv.taken{opacity:.35}
+.drv .tr{font-size:12px;color:#ffd23a;margin-top:2px}
+.st{display:grid;grid-template-columns:auto 1fr;gap:3px 6px;align-items:center;margin-top:8px;font-size:11px;color:#c9d6ea}
+.st .bar{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;height:8px}
+.st .bar i{border-radius:2px;background:rgba(255,255,255,.13)}
+.st .bar i.f{background:linear-gradient(#fff6a8,#ffb52a)}
+.st .bar.w i.f{background:linear-gradient(#bfe3ff,#4c9bff)}
 /* Menue */
 #s-menu{align-items:center;justify-content:space-around;gap:16px}
 .dpad{position:relative;width:min(62vh,280px);height:min(62vh,280px);flex:none}
@@ -214,9 +220,9 @@ function send(force){
   // ueber den Server-Ersatzweg max. ~25 Nachrichten/s (letzter Stand wird nachgeschickt)
   if (!force && conn && conn.kind === "relay" && now - lastSend < 40) { if (!sendLater) sendLater = setTimeout(() => { sendLater = 0; send(); }, 42 - (now - lastSend)); return; }
   lastKey = key; lastSend = now;
-  if (conn && conn.open) conn.send({ t: "s", b, x });
+  if (conn && conn.open) conn.send({ t: "s", b, x, n: ++SEQ });
 }
-let sendLater = 0;
+let sendLater = 0, SEQ = 0;
 setInterval(() => { if (performance.now() - lastSend > 100) send(true); }, 100);
 
 // ---- Tasten (Daumen darf zwischen Tasten rutschen)
@@ -243,6 +249,12 @@ document.addEventListener("pointermove", e => {
 });
 const up = e => { if (ptr.delete(e.pointerId)) recompute(); };
 document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
+// Sicherheitsnetz gegen "klemmende" Tasten: liegt kein Finger mehr auf dem Display, ist auch nichts gedrueckt
+function releaseAll(){ if (ptr.size) { ptr.clear(); recompute(); } if (sid !== null) { sid = null; idle(); setSteer(0); } send(true); }
+document.addEventListener("touchend", e => { if (e.touches.length === 0) releaseAll(); });
+document.addEventListener("touchcancel", e => { if (e.touches.length === 0) releaseAll(); });
+addEventListener("blur", releaseAll);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState !== "visible") releaseAll(); });
 document.addEventListener("touchstart", e => { if (!e.target.closest("#sheet,#s-join,#s-pick,#s-rec")) e.preventDefault(); }, { passive: false });
 document.addEventListener("gesturestart", e => e.preventDefault());
 document.addEventListener("contextmenu", e => e.preventDefault());
@@ -406,7 +418,7 @@ function onMsg(m, link){
   }
   if (m.t === "who") { const n = performance.now(); if ((!conn || conn === link) && n - whoT > 1000) { whoT = n; hello(link); } return; }
   if (link !== conn) return;
-  if (m.t === "p") {}
+  if (m.t === "p") { const rtt = Date.now() - m.n; if (rtt >= 0 && rtt < 5000) { NET.rtt = rtt; setNet((conn.kind === "rtc" ? "verbunden" : "verbunden ☁") + " · " + rtt + " ms"); } }
   else if (m.t === "mode") show(m.m === "race" ? "race" : m.m === "pick" ? "pick" : "menu");
   else if (m.t === "lobby") renderPick(m);
   else if (m.t === "hud") {
@@ -420,9 +432,13 @@ function onMsg(m, link){
   else if (m.t === "rec") startRecScreen(m);
   else if (m.t === "recEnd") { stopRecTimer(); if (mode === "rec") show(prevMode || "menu"); }
 }
+function statBars(st){
+  const row = (k, n) => `<span>${n}</span><div class="bar${k === "weight" ? " w" : ""}">${Array.from({ length: 10 }, (_, i) => `<i class="${i < (st[k] || 0) ? "f" : ""}"></i>`).join("")}</div>`;
+  return `<div class="st">${row("speed", "Tempo")}${row("accel", "Beschl.")}${row("handling", "Handling")}${row("weight", "Gewicht")}</div>`;
+}
 function renderPick(m){
   $("#drivers").innerHTML = m.drivers.map(d => `<button class="drv ${d.id === m.mine ? "mine" : ""} ${d.taken ? "taken" : ""}" data-d="${d.id}" ${d.taken ? "disabled" : ""}>
-    <div class="sw" style="background:${d.color}"></div><div class="n">${d.name}</div><div class="c">${d.car}</div></button>`).join("");
+    <div class="sw" style="background:${d.color}"></div><div class="n">${d.name}</div><div class="c">${d.car}</div>${d.trait ? `<div class="tr">${d.trait}</div>` : ""}${d.st ? statBars(d.st) : ""}</button>`).join("");
   $("#pickmsg").textContent = m.ready ? "✔ Bereit! Warte auf die anderen…" : "Tippe auf deinen Fahrer.";
   if (m.mine) { const d = m.drivers.find(x => x.id === m.mine); if (d) document.documentElement.style.setProperty("--me", d.color); }
 }
@@ -509,6 +525,15 @@ else if ($("#code").value && $("#code").value === store.get("code", "") && Date.
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && joined && (!conn || !conn.open || performance.now() - NET.lastRx > 2000)) connect(); });
 addEventListener("online", () => { if (joined) connect(); });
 addEventListener("pageshow", (e) => { if (e.persisted && joined) connect(); });
+// Bildschirm wach halten - sonst geht das Handy in der Lobby/Pause schlafen und die Verbindung reisst ab
+let wake = null;
+async function keepAwake(){
+  if (!joined || wake || !navigator.wakeLock || document.visibilityState !== "visible") return;
+  try { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } catch(e){ wake = null; }
+}
+document.addEventListener("visibilitychange", keepAwake);
+addEventListener("pointerdown", keepAwake, { passive: true });
+setInterval(keepAwake, 5000);
 </script>
 </body>
 </html>

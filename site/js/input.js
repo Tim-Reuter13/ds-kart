@@ -42,18 +42,36 @@ export class Inputs {
       const gp = navigator.getGamepads()[+dev.slice(2)];
       if (gp) {
         const b = (i) => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.4));
-        let ax = gp.axes[0] || 0; if (Math.abs(ax) < 0.18) ax = 0;
+        // Totzone mit Umrechnung: kein Sprung von 0 auf 0,18, ausgeleierte Sticks lenken nicht von selbst
+        let ax = gp.axes[0] || 0; const dz = 0.16, aa = Math.abs(ax);
+        ax = aa < dz ? 0 : Math.sign(ax) * Math.min(1, (aa - dz) / (1 - dz));
         const ay = gp.axes[1] || 0;
         s.steer = Math.max(-1, Math.min(1, ax + (b(15) ? 1 : 0) - (b(14) ? 1 : 0)));
         s.gas = b(0); s.brake = b(1) || b(2); s.drift = b(5) || b(7); s.item = b(4) || b(6); s.back = b(3);
         s.up = b(12) || ay < -0.6; s.down = b(13) || ay > 0.6; s.left = b(14) || ax < -0.6; s.right = b(15) || ax > 0.6;
         s.ok = b(0); s.cancel = b(1); s.start = b(9); s.cam = b(8);
+        // Billig-Controller ohne Standard-Belegung: Steuerkreuz liegt oft als "Hat" auf Achse 9 (-1 = oben, im Uhrzeigersinn in 2/7-Schritten)
+        if (gp.mapping !== "standard" && gp.axes.length > 9) {
+          const k = Math.round((gp.axes[9] + 1) * 3.5);
+          if (k >= 0 && k <= 7) {
+            const up = k === 7 || k <= 1, rt = k >= 1 && k <= 3, dn = k >= 3 && k <= 5, lf = k >= 5;
+            s.up ||= up; s.down ||= dn; s.left ||= lf; s.right ||= rt;
+            if (!s.steer) s.steer = (rt ? 1 : 0) - (lf ? 1 : 0);
+          }
+        }
       }
     } else {
       const p = this.net.phoneState(dev);
       if (p) Object.assign(s, p);
     }
     return s;
+  }
+
+  // Ist das Geraet noch da? (Handy: Lebenszeichen in den letzten 0,9 s, Controller: eingesteckt)
+  alive(dev) {
+    if (dev.startsWith("gp")) { const g = navigator.getGamepads ? navigator.getGamepads()[+dev.slice(2)] : null; return !!(g && g.connected); }
+    if (dev.startsWith("ph")) return !!this.net.phoneState(dev, 900);
+    return true;
   }
 
   // Flanken (nur einmal pro Druck) fuer Menues

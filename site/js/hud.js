@@ -19,9 +19,11 @@ const fmtTime = (t) => { t = Math.max(0, t); const m = Math.floor(t / 60), s = t
 const blobs = Array.from({ length: 14 }, () => ({ x: Math.random(), y: 0.15 + Math.random() * 0.75, r: 0.12 + Math.random() * 0.18, ph: Math.random() * 6 }));
 
 export class HUD {
-  constructor(canvas) { this.c = canvas; this.g = canvas.getContext("2d"); this.msgs = new Map(); }
+  constructor(canvas) { this.c = canvas; this.g = canvas.getContext("2d"); this.msgs = new Map(); this.bans = new Map(); }
 
   message(racer, text, t = 1.6, color = "#fff", sub = "") { this.msgs.set(racer, { text, t, max: t, color, sub }); }
+  // grosses Banner (z.B. "LETZTE RUNDE!")
+  banner(racer, text, t = 2.2, sub = "") { this.bans.set(racer, { text, t, max: t, sub }); }
 
   draw(race, views, dt) {
     const g = this.g, dpr = this.c.width / (innerWidth || 1); // HUD-Aufloesung ist begrenzt (siehe main.js resize)
@@ -35,6 +37,7 @@ export class HUD {
     if (views.length >= 3) { const cols = race.humans.length <= 4 ? 2 : race.humans.length <= 6 ? 3 : 4; for (let c = 1; c < cols; c++) g.fillRect(W * c / cols - 2, 0, 4, H); }
     this.minimap(race, views, W, H);
     for (const [r, m] of this.msgs) { m.t -= dt; if (m.t <= 0) this.msgs.delete(r); }
+    for (const [r, m] of this.bans) { m.t -= dt; if (m.t <= 0) this.bans.delete(r); }
   }
 
   drawView(race, v, dt) {
@@ -155,11 +158,28 @@ export class HUD {
       const n = Math.ceil(race.countdown);
       if (n <= 3) txt(g, String(n), cx, cy, 130 * u, "#ffd23a", "center");
       else txt(g, race.extra.name, cx, cy, 44 * u, "#fff", "center");
+      txt(g, "🚀 Tipp: Gas ab der „2“ halten = Raketenstart", cx, y + h * 0.66, 19 * u, "#ffffff", "center", "Arial, sans-serif");
     } else if (race.time < 1 && race.started) {
       txt(g, "LOS!", cx, cy, 120 * u, "#6aff7a", "center");
     }
+    // Banner
+    const bn = this.bans.get(r);
+    if (bn) {
+      const age = bn.max - bn.t, sc = age < 0.3 ? 0.3 + age / 0.3 * 0.85 : age < 0.45 ? 1.15 - (age - 0.3) / 0.15 * 0.15 : 1;
+      g.save(); g.globalAlpha = Math.min(1, bn.t * 2.5); g.translate(cx, cy - 6 * u); g.scale(sc, sc); g.rotate(-0.04);
+      txt(g, bn.text, 0, 0, 76 * u, Math.floor(race.time * 8) % 2 ? "#ffd23a" : "#ff6a3a", "center");
+      if (bn.sub) txt(g, bn.sub, 0, 56 * u, 24 * u, "#ffffff", "center", "Arial, sans-serif");
+      g.restore(); g.globalAlpha = 1;
+    }
+    // Windschatten laedt sich auf
+    if ((r.slipT || 0) > 0.15 && race.started && !r.finished) {
+      const k = Math.min(1, r.slipT / 1.4), bw = 170 * u, bh = 12 * u, bx2 = cx - bw / 2, by2 = y + h - 96 * u;
+      txt(g, "💨 WINDSCHATTEN", cx, by2 - 14 * u, 16 * u, "#cfeaff", "center", "Arial, sans-serif");
+      rrect(g, bx2, by2, bw, bh, bh / 2); g.fillStyle = "rgba(10,14,28,0.6)"; g.fill();
+      rrect(g, bx2, by2, Math.max(bh, bw * k), bh, bh / 2); g.fillStyle = k > 0.85 ? "#ffffff" : "#7fd0ff"; g.fill();
+    }
     const m = this.msgs.get(r);
-    if (m) {
+    if (m && !bn) {
       const age = m.max - m.t, sc = age < 0.25 ? 0.6 + age / 0.25 * 0.5 : age < 0.4 ? 1.1 - (age - 0.25) / 0.15 * 0.1 : 1;
       g.save(); g.globalAlpha = Math.min(1, m.t * 2); g.translate(cx, cy + 70 * u); g.scale(sc, sc);
       g.font = `${44 * u}px ${FONT}`; const tw = g.measureText(m.text).width;
@@ -186,7 +206,7 @@ export class HUD {
       if (r._wrong && (Math.abs(diff) < 0.7 || r.finished)) r._wrong = false;
       if (r._wrong) this.wrongArrow(g, cx, y + h * 0.2, u, diff, race.time);
     }
-    if (r.offline && !r.finished) txt(g, "📵 Handy getrennt – Autopilot fährt", cx, y + h - 92 * u, 24 * u, "#ffd23a", "center", EMOJI);
+    if ((r.offT || 0) > 1.2 && !r.finished) txt(g, (r.dev || "").startsWith("gp") ? "🎮 Controller getrennt – Autopilot fährt" : "📵 Handy getrennt – Autopilot fährt", cx, y + h - 92 * u, 24 * u, "#ffd23a", "center", EMOJI);
     if (r.finished) {
       txt(g, `ZIEL!  ${r.place}. Platz`, cx, cy, 64 * u, placeCol(r.place), "center");
     }

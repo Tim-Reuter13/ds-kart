@@ -3,24 +3,39 @@ import { RoundedBoxGeometry } from "../vendor/RoundedBoxGeometry.js";
 
 // Fahrerinnen und Fahrer. stats: speed/accel/handling/weight als Faktoren um 1
 export const DRIVERS = [
-  { id: "tim", name: "Tim", car: "Mercedes C220 T-Modell", type: "sedan", color: "#b9bec4", accent: "#c9ccd1", hud: "#e04040",
+  { id: "tim", trait: "Topspeed auf Geraden", name: "Tim", car: "Mercedes C220 T-Modell", type: "sedan", color: "#b9bec4", accent: "#c9ccd1", hud: "#e04040",
     shirt: "#2a2a2e", hair: "#2b1d14", hairStyle: "short", skin: "#f0c8a8", kitt: true, portrait: "sprites/tim/portrait.webp", stats: { speed: 1.04, accel: 0.98, handling: 0.98, weight: 1.05 } },
-  { id: "sonja", name: "Sonja", car: "Kia Venga", type: "venga", color: "#4a4e55", accent: "#e8e8e8", hud: "#ff6a5a",
+  { id: "sonja", trait: "wendig & flink", name: "Sonja", car: "Kia Venga", type: "venga", color: "#4a4e55", accent: "#e8e8e8", hud: "#ff6a5a",
     shirt: "#f2a6c0", hair: "#5a3420", hairStyle: "long", skin: "#f3cfb2", portrait: "sprites/sonja/portrait.webp", stats: { speed: 0.98, accel: 1.06, handling: 1.05, weight: 0.94 } },
-  { id: "jannik", name: "Jannik", car: "BMW 2er Gran Tourer", type: "x4", color: "#e9ebee", accent: "#2b2f36", hud: "#5aa0ff",
+  { id: "jannik", trait: "schnell, aber schwer", name: "Jannik", car: "BMW 2er Gran Tourer", type: "x4", color: "#e9ebee", accent: "#2b2f36", hud: "#5aa0ff",
     shirt: "#f4f4f4", hair: "#c9a25a", hairStyle: "short", skin: "#efc6a4", portrait: "sprites/jannik/portrait.webp", stats: { speed: 1.05, accel: 0.97, handling: 0.95, weight: 1.12 } },
-  { id: "franzi", name: "Franzi", car: "VW Touran", type: "touran", color: "#1f62b8", accent: "#30353b", hud: "#c8d2dc",
+  { id: "franzi", trait: "Allrounderin", name: "Franzi", car: "VW Touran", type: "touran", color: "#1f62b8", accent: "#30353b", hud: "#c8d2dc",
     shirt: "#3a9a5e", hair: "#8a5a2b", hairStyle: "pony", skin: "#f1cbae", portrait: "sprites/franzi/portrait.webp", stats: { speed: 1.0, accel: 1.02, handling: 1.01, weight: 1.06 } },
-  { id: "giovanni", name: "Giovanni", car: "Mausauto", type: "hatch", color: "#8d9096", accent: "#f2a6c0", hud: "#f7a8c8", cpu: true,
+  { id: "giovanni", trait: "faucht alle an", name: "Giovanni", car: "Mausauto", type: "hatch", color: "#8d9096", accent: "#f2a6c0", hud: "#f7a8c8", cpu: true,
     shirt: "#5a5e66", hair: "#2a1d16", hairStyle: "short", skin: "#e9bf9c", portrait: "sprites/giovanni/portrait.webp", stats: { speed: 0.98, accel: 0.97, handling: 1.03, weight: 1.0 } },
-  { id: "papa", name: "Sonjas Papa", car: "Mazda CX-30", type: "x4", color: "#9e1b26", accent: "#2a2c30", hud: "#ff9a3a", cpu: true,
+  { id: "papa", trait: "schwer – rempelt gut", name: "Sonjas Papa", car: "Mazda CX-30", type: "x4", color: "#9e1b26", accent: "#2a2c30", hud: "#ff9a3a", cpu: true,
     shirt: "#6f86b8", hair: "#b9a894", hairStyle: "short", skin: "#f0c4a6", portrait: "sprites/papa/portrait.webp", stats: { speed: 1.01, accel: 0.98, handling: 1.01, weight: 1.12 } },
-  { id: "kinga", name: "Kinga", car: "Renault Espace", type: "touran", color: "#3b3e44", accent: "#c9ccd1", hud: "#c79bff", cpu: true,
+  { id: "kinga", trait: "spritzig & ausgewogen", name: "Kinga", car: "Renault Espace", type: "touran", color: "#3b3e44", accent: "#c9ccd1", hud: "#c79bff", cpu: true,
     shirt: "#c8a2d8", hair: "#c49a6c", hairStyle: "long", skin: "#f2cdb0", portrait: "sprites/kinga/portrait.webp", stats: { speed: 1.0, accel: 1.03, handling: 1.02, weight: 1.04 } },
   // Aileen laeuft zu Fuss: spritziger, wird aber leichter weggerempelt
-  { id: "aileen", name: "Aileen", car: "zu Fuß 🏃‍♀️", type: "hatch", color: "#8a8d92", accent: "#1d1d1f", hud: "#3fd6c0", cpu: true, foot: true,
+  { id: "aileen", trait: "zu Fuß: flink, aber leicht", name: "Aileen", car: "zu Fuß 🏃‍♀️", type: "hatch", color: "#8a8d92", accent: "#1d1d1f", hud: "#3fd6c0", cpu: true, foot: true,
     shirt: "#8a8d92", hair: "#4a2c1c", hairStyle: "long", skin: "#f0c8aa", portrait: "sprites/aileen/portrait.webp", stats: { speed: 0.99, accel: 1.08, handling: 1.07, weight: 0.86 } },
 ];
+
+// Werte als 1..10 fuer die Balken in Lobby und Handy (relativ zum Fahrerfeld, damit Unterschiede sichtbar sind)
+export const STAT_KEYS = [["speed", "Tempo"], ["accel", "Beschl."], ["handling", "Handling"], ["weight", "Gewicht"]];
+export function statLevels(d) {
+  const out = {};
+  for (const [k] of STAT_KEYS) {
+    const vals = DRIVERS.map(x => x.stats[k]), lo = Math.min(...vals), hi = Math.max(...vals);
+    out[k] = Math.round(2 + 8 * (d.stats[k] - lo) / Math.max(1e-6, hi - lo));
+  }
+  return out;
+}
+export function statBarsHTML(d) {
+  const L = statLevels(d);
+  return `<div class="stats">${STAT_KEYS.map(([k, n]) => `<span>${n}</span><div class="bar${k === "weight" ? " w" : ""}">${Array.from({ length: 10 }, (_, i) => `<i class="${i < L[k] ? "f" : ""}"></i>`).join("")}</div>`).join("")}</div>`;
+}
 
 const SHAPES = {
   //        L    W    wr    body h  cabin z0  z1    cab h  taperF taperB  seat z

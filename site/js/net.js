@@ -153,6 +153,7 @@ export class Net {
         }
         const old = ph.link;
         ph.link = link; ph.via = link.kind; ph.name = String(m.name || "Handy").slice(0, 14); ph.lastSeen = performance.now(); ph.online = true;
+        ph.seq = -1; // Handy zaehlt nach (Neu-)Verbindung wieder von vorn
         if (old && old !== link) old.close();
         this.send(ph.id, { t: "welcome", id: ph.id, token: ph.token, via: link.kind });
         this.emit("join", ph.id);
@@ -163,6 +164,8 @@ export class Net {
       ph.lastSeen = performance.now();
       if (!ph.online) { ph.online = true; this.emit("join", ph.id); }
       if (m.t === "s") {
+        // verspaetete/doppelte Pakete (Wegwechsel Direkt <-> Server) ignorieren
+        if (typeof m.n === "number") { if (ph.seq >= 0 && m.n <= ph.seq && ph.seq - m.n < 5000) return; ph.seq = m.n; }
         const st = { steer: Math.max(-1, Math.min(1, +m.x || 0)) };
         BITS.forEach((k, i) => st[k] = !!(m.b & (1 << i)));
         // kurze Tipper (Druck + Loslassen zwischen zwei Bildern) nicht verschlucken
@@ -190,9 +193,11 @@ export class Net {
 
   phoneIds() { return [...this.phones.keys()].filter(id => this.phones.get(id).online); }
   phone(id) { return this.phones.get(id); }
-  phoneState(id) {
+  // staleMs: aelterer Stand gilt als "weg" (im Rennen faehrt dann kurz der Autopilot statt mit klemmender Taste weiter)
+  phoneState(id, staleMs) {
     const p = this.phones.get(id);
     if (!p || !p.online) return null;
+    if (staleMs && performance.now() - p.lastSeen > staleMs) return null;
     if (!p.pulse) return p.state;
     const now = performance.now(), s = Object.assign({}, p.state);
     for (const k in p.pulse) if (now - p.pulse[k] < 70) s[k] = true;

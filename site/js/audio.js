@@ -170,6 +170,7 @@ export class Audio {
       case "hit": this.tone(160, 0.35, { type: "sawtooth", slide: 0.3, vol: 0.3 }); this.noise(0.3, { f0: 500, f1: 100, vol: 0.4 }); break;
       case "wall": this.noise(0.15, { f0: 300, f1: 80, vol: 0.4, type: "lowpass" }); break;
       case "crash": this.noise(0.45, { f0: 1800, f1: 90, vol: 0.7, type: "lowpass" }); this.tone(95, 0.3, { type: "sine", vol: 0.5, slide: 0.5 }); [1400, 1900, 2600].forEach((f, i) => this.tone(f, 0.12, { type: "square", vol: 0.06, at: 0.02 + i * 0.03, slide: 0.7 })); this.noise(0.25, { at: 0.05, f0: 5000, f1: 2500, vol: 0.18, type: "highpass" }); break;
+      case "lastlap": [659, 784, 988, 1319].forEach((f, i) => this.tone(f, 0.16, { at: i * 0.11, vol: 0.2 })); this.tone(1319, 0.35, { at: 0.48, vol: 0.16, type: "triangle" }); break;
       case "step": this.noise(0.05, { f0: 700 + Math.random() * 300, f1: 160, vol: 0.16, q: 1.2 }); this.tone(85 + Math.random() * 15, 0.05, { type: "sine", vol: 0.12, slide: 0.7 }); break;
       case "bump": this.tone(140, 0.12, { type: "sine", vol: 0.45, slide: 0.6 }); this.noise(0.1, { f0: 900, f1: 300, vol: 0.3, q: 1.5 }); this.tone(520, 0.05, { type: "triangle", vol: 0.12 }); break;
       case "land": this.tone(75, 0.22, { type: "sine", vol: 0.55, slide: 0.55 }); this.noise(0.2, { f0: 600, f1: 120, vol: 0.35, type: "lowpass" }); this.tone(260, 0.06, { type: "triangle", vol: 0.1, at: 0.03 }); break;
