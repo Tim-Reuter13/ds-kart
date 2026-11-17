@@ -15,7 +15,9 @@ const OFFLINE_MS = 4000;
 const rndCode = () => Array.from({ length: 4 }, () => ALPHA[(Math.random() * ALPHA.length) | 0]).join("");
 
 export class Net {
-  constructor() {
+  // opts.key = eigener Speicher-Schluessel fuer den Raum-Code (jedes Spiel seinen eigenen, sonst landen Handys im falschen Spiel)
+  constructor(opts = {}) {
+    this.key = opts.key || "dskart_code";
     this.phones = new Map(); // id -> {id, link, name, token, state, online, lastSeen, via}
     this.code = null;
     this.status = "aus";
@@ -31,7 +33,7 @@ export class Net {
     if (this.started) return;
     this.started = true;
     let code = "";
-    try { code = sessionStorage.getItem("dskart_code") || ""; } catch (e) {}
+    try { code = sessionStorage.getItem(this.key) || ""; } catch (e) {}
     this.setCode(code || rndCode());
     this.openRTC(0);
     this.openRelays();
@@ -39,7 +41,7 @@ export class Net {
   setCode(code) {
     const old = this.code;
     this.code = code;
-    try { sessionStorage.setItem("dskart_code", code); } catch (e) {}
+    try { sessionStorage.setItem(this.key, code); } catch (e) {}
     if (old !== code) {
       for (const r of this.relays) if (r.open) { if (old) r.unsubscribe(DSK_TOPIC(old) + "/up"); r.subscribe(DSK_TOPIC(code) + "/up"); }
       this.emit("ready", code);
@@ -176,6 +178,7 @@ export class Net {
       else if (m.t === "recCancel") this.emit("recCancel", ph.id);
       else if (m.t === "pick") this.emit("pick", ph.id, m.driver);
       else if (m.t === "p") link.send({ t: "p", n: m.n });
+      else this.emit("msg", ph.id, m); // alles andere (z.B. Spiel "Wer war's?") geht ans Spiel
     };
     const close = () => {
       if (ph && ph.link === link && ph.online) { ph.online = false; ph.state = {}; this.emit("leave", ph.id); }
@@ -205,8 +208,8 @@ export class Net {
   }
   send(id, msg) { const p = this.phones.get(id); if (p && p.link && p.link.open) { try { p.link.send(msg); } catch (e) {} } }
   broadcast(msg) { for (const id of this.phones.keys()) this.send(id, msg); }
-  joinUrl() {
+  joinUrl(page = "pad.html") {
     const base = location.href.replace(/[^/]*(\?.*)?(#.*)?$/, "");
-    return base + "pad.html?r=" + this.code;
+    return base + page + "?r=" + this.code;
   }
 }

@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0d1220">
+<title>Wer war's? · Handy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--y:#ffcf3a;--red:#ff4a3d;--blue:#5aa0ff;--bg:#0d1220;--panel:#1b2338;--line:rgba(255,255,255,.14)}
+*{box-sizing:border-box;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:#eef2f8;font:15px/1.3 Nunito,system-ui,sans-serif;overflow:hidden;touch-action:none;overscroll-behavior:none}
+input{font:800 20px Nunito,system-ui,sans-serif;padding:14px;border-radius:14px;border:2px solid var(--line);background:#0b1428;color:#fff;width:100%;-webkit-user-select:text;user-select:text}
+.scr{position:fixed;inset:0;display:none;flex-direction:column;padding:max(14px,env(safe-area-inset-top)) 16px 16px;overflow:auto;touch-action:pan-y}
+.scr.on{display:flex}
+h1{font-family:"Lilita One",sans-serif;font-size:40px;margin:6px 0;color:var(--y);text-shadow:0 4px 0 #6a1a14}
+.go{font:900 22px Nunito,system-ui,sans-serif;padding:16px;border:0;border-radius:16px;background:var(--red);color:#fff;box-shadow:0 5px 0 #8a1f15;width:100%;margin-top:10px}
+.go:disabled{background:#4a5470;box-shadow:0 5px 0 #2a3248}
+.msg{color:#ffb0a0;font-size:14px;min-height:18px;margin-top:6px}
+.hint{color:#b9c6da;font-size:13px}
+#avs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}
+#avs button{border:3px solid transparent;border-radius:16px;background:var(--panel);padding:6px 2px;color:#fff;font:800 12px Nunito,sans-serif;display:flex;flex-direction:column;align-items:center;gap:3px}
+#avs button.mine{border-color:var(--y)}#avs button.taken{opacity:.3}
+#lplayers{font-size:14px;color:#c9d6ea;margin:6px 0}
+/* Spiel */
+#s-game{padding:0}
+#cv{position:absolute;inset:0;width:100%;height:100%}
+#hudTop{position:absolute;left:0;right:0;top:0;padding:max(8px,env(safe-area-inset-top)) 10px 0;display:flex;gap:8px;align-items:flex-start;pointer-events:none}
+#tlist{pointer-events:auto;background:rgba(10,14,28,.72);border:2px solid var(--line);border-radius:12px;padding:6px 10px;font-size:12px;max-width:46vw;max-height:40vh;overflow:auto}
+#tlist b{font-family:"Lilita One",sans-serif;font-size:14px;color:var(--y);font-weight:400}
+#tlist .t{margin:2px 0}#tlist .t.ok{color:#6aff7a;text-decoration:line-through;opacity:.7}
+#tlist.mini .t{display:none}
+#bar{flex:1;height:16px;border-radius:8px;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.3);overflow:hidden;margin-top:4px}
+#bar i{display:block;height:100%;width:0;background:#3fd66a;transition:width .4s}
+#topR{display:flex;flex-direction:column;align-items:flex-end;gap:4px;pointer-events:auto}
+#net{font-size:10px;color:#9fb3d1;background:rgba(0,0,0,.4);padding:2px 6px;border-radius:8px}
+.sq{width:46px;height:46px;border-radius:12px;border:2px solid var(--line);background:rgba(10,14,28,.72);font-size:24px;color:#fff}
+#roleTag{font:900 11px Nunito,sans-serif;padding:3px 8px;border-radius:8px}
+#acts{position:absolute;right:max(10px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(2,auto);gap:10px;justify-items:center}
+.ab{width:82px;height:82px;border-radius:50%;border:4px solid rgba(255,255,255,.85);color:#fff;font:900 11px Nunito,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;box-shadow:0 5px 0 rgba(0,0,0,.4);touch-action:none}
+.ab span{font-size:30px;line-height:1}
+.ab:disabled{opacity:.28;filter:grayscale(1)}
+.ab.use{background:#d4a017}.ab.rep{background:#c4302b}.ab.kill{background:#8a1020}.ab.sab{background:#4a2a6a}.ab.hat{background:#3a4a5a}
+.ab .cd{position:absolute;font:900 26px Nunito,sans-serif}
+#stickzone{position:absolute;left:0;bottom:0;width:55%;height:62%;touch-action:none}
+#base,#knob{position:absolute;border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}
+#base{width:150px;height:150px;background:rgba(255,255,255,.08);border:3px solid rgba(255,255,255,.25)}
+#knob{width:70px;height:70px;background:rgba(255,255,255,.35);border:3px solid rgba(255,255,255,.7)}
+#alert{position:absolute;left:50%;top:22%;transform:translateX(-50%);font:900 18px Nunito,sans-serif;text-align:center;padding:8px 14px;border-radius:12px;background:rgba(200,20,20,.85);display:none;pointer-events:none;max-width:90vw}
+#alert.on{display:block;animation:pl .8s ease-in-out infinite alternate}
+@keyframes pl{to{transform:translateX(-50%) scale(1.05)}}
+#toast{position:absolute;left:50%;bottom:44%;transform:translateX(-50%);background:rgba(10,14,28,.85);border:2px solid var(--y);padding:8px 14px;border-radius:12px;font-weight:800;display:none;pointer-events:none;text-align:center}
+#toast.on{display:block}
+/* Overlays */
+.ov{position:fixed;inset:0;background:rgba(8,10,20,.92);display:none;flex-direction:column;align-items:center;justify-content:center;padding:18px;z-index:20;overflow:auto;touch-action:pan-y}
+.ov.on{display:flex}
+.ov h2{font-family:"Lilita One",sans-serif;font-size:38px;margin:0 0 6px;text-align:center}
+.ov .x{position:absolute;right:12px;top:max(10px,env(safe-area-inset-top));width:44px;height:44px;border-radius:50%;border:0;background:#2b3a5c;color:#fff;font-size:22px}
+#ovTask{background:rgba(8,10,20,.96);justify-content:flex-start;padding-top:60px}
+#roleBig{font-family:"Lilita One",sans-serif;font-size:58px;letter-spacing:2px}
+#vlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;width:100%;max-width:560px;margin:8px 0}
+#vlist button{border:3px solid transparent;border-radius:14px;background:var(--panel);color:#fff;padding:6px;display:flex;flex-direction:column;align-items:center;gap:2px;font:800 13px Nunito,sans-serif;position:relative}
+#vlist button.sel{border-color:var(--y)}#vlist button:disabled{opacity:.35}
+#vlist button .vd{position:absolute;right:6px;top:6px;font-size:12px;background:#3fd66a;border-radius:50%;width:20px;height:20px;color:#082}
+#mstage{font-weight:800;font-size:16px;text-align:center;margin:4px 0}
+#sabMenu{position:absolute;right:110px;bottom:110px;display:none;flex-direction:column;gap:8px}
+#sabMenu.on{display:flex}
+#sabMenu button{font:900 15px Nunito,sans-serif;border:0;border-radius:12px;padding:12px 16px;background:#4a2a6a;color:#fff;border:2px solid #b07ad8}
+#mapOv canvas{max-width:100%;max-height:78vh;border-radius:12px}
+#holdBtn{position:absolute;left:50%;bottom:30%;transform:translateX(-50%);width:150px;height:150px;border-radius:50%;border:6px solid #fff;background:#c4302b;color:#fff;font:900 18px Nunito,sans-serif;display:none;touch-action:none}
+#holdBtn.on{display:block}#holdBtn.held{background:#3fd66a;color:#082}
+</style>
+</head>
+<body>
+<div class="scr on" id="s-join">
+  <h1>Wer war's?</h1>
+  <div class="hint">Timtendo-Partyspiel · dein Handy ist dein Bildschirm</div>
+  <div style="margin-top:14px" class="hint">Raum-Code (steht auf dem Fernseher)</div>
+  <input id="code" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="CODE" style="text-transform:uppercase;letter-spacing:6px;text-align:center">
+  <div style="margin-top:10px" class="hint">Dein Name</div>
+  <input id="name" maxlength="14" autocomplete="off" placeholder="Name">
+  <button class="go" id="joinBtn">Mitspielen</button>
+  <div class="msg" id="jmsg"></div>
+</div>
+
+<div class="scr" id="s-lobby">
+  <h1 style="font-size:32px">Wer bist du?</h1>
+  <div class="hint">Karte: <b id="lmap"></b> · tippe auf deine Figur</div>
+  <div id="avs"></div>
+  <div id="lplayers"></div>
+  <button class="go" id="lstart">Runde starten</button>
+  <div class="msg" id="lmsg"></div>
+</div>
+
+<div class="scr" id="s-game">
+  <canvas id="cv"></canvas>
+  <div id="stickzone"><div id="base"></div><div id="knob"></div></div>
+  <div id="hudTop">
+    <div id="tlist"></div>
+    <div id="bar"><i></i></div>
+    <div id="topR"><span id="net">…</span><span id="roleTag"></span><button class="sq" id="mapBtn">🗺️</button></div>
+  </div>
+  <div id="alert"></div>
+  <div id="toast"></div>
+  <button id="holdBtn">HALTEN</button>
+  <div id="sabMenu"><button data-s="lights">💡 Licht aus</button><button data-s="crit" id="critBtn">🔥 Krise</button></div>
+  <div id="acts">
+    <button class="ab hat" id="bHatch" disabled><span>🕳️</span>KLAPPE</button>
+    <button class="ab sab" id="bSab" disabled><span>💣</span>SABOTAGE</button>
+    <button class="ab kill" id="bKill" disabled><span>💤</span>AUSKNOCKEN<b class="cd" id="cdTxt"></b></button>
+    <button class="ab rep" id="bRep" disabled><span>📣</span>MELDEN</button>
+    <button class="ab use" id="bUse" disabled style="grid-column:span 2;width:92px;height:92px"><span id="useIc">✋</span><b id="useTxt">BENUTZEN</b></button>
+  </div>
+</div>
+
+<div class="ov" id="ovRole"><div id="roleBig"></div><div id="roleSub" style="text-align:center;font-weight:800;font-size:18px;margin-top:8px;max-width:420px"></div><div id="roleMates" style="display:flex;gap:10px;margin-top:14px"></div></div>
+<div class="ov" id="ovTask"><button class="x" id="taskX">✕</button><div class="taskbox" id="taskBox"></div></div>
+<div class="ov" id="ovMeet"><h2 id="mtitle"></h2><div id="msub" style="text-align:center;font-weight:800"></div><div id="mstage"></div><div id="vlist"></div><button class="go" id="vskip" style="max-width:560px;background:#4a5470;box-shadow:0 5px 0 #2a3248">Überspringen</button></div>
+<div class="ov" id="ovDead"><h2 style="color:var(--red)" id="deadT">Ausgeknockt!</h2><div id="deadBy"></div><div style="text-align:center;font-weight:800;margin-top:10px;max-width:420px" id="deadSub"></div><button class="go" id="deadOk" style="max-width:360px">Als Geist weitermachen 👻</button></div>
+<div class="ov" id="ovOver"><h2 id="oT"></h2><div id="oWhy" style="font-weight:800;text-align:center"></div><div id="oList" style="display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:14px 0"></div><button class="go" id="oAgain" style="max-width:360px">Zurück zur Lobby</button></div>
+<div class="ov" id="mapOv"><button class="x" id="mapX">✕</button><canvas id="mapCv"></canvas></div>
+
+<script src="../vendor/peerjs.min.js"></script>
+<script src="../js/mqttlite.js"></script>
+<script src="../js/phonelink.js"></script>
+<script type="module" src="handy.js"></script>
+</body>
+</html>

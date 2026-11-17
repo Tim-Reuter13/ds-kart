@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wer war's? · Timtendo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--y:#ffcf3a;--red:#ff4a3d;--blue:#5aa0ff;--panel:rgba(255,255,255,.07);--line:rgba(255,255,255,.14)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% -10%,#3a1420,#0d1220 70%);color:#eef2f8;font-family:Nunito,system-ui,sans-serif;overflow:hidden}
+#tv{position:fixed;inset:0;width:100%;height:100%;display:none}
+body[data-scr="game"] #tv,body[data-scr="meet"] #tv{display:block}
+.scr{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;padding:22px 28px;overflow:auto}
+.scr.on{display:flex}
+h1{font-family:"Lilita One",sans-serif;font-size:58px;margin:0;color:var(--y);text-shadow:0 5px 0 #6a1a14;letter-spacing:1px}
+h1 small{font-size:22px;color:#ffe9d6;text-shadow:none;margin-left:10px}
+#home{position:fixed;left:14px;top:12px;z-index:40;color:#fff;text-decoration:none;font-weight:800;background:rgba(0,0,0,.35);padding:7px 13px;border-radius:20px;border:2px solid var(--line)}
+body[data-scr="game"] #home,body[data-scr="meet"] #home{display:none}
+/* Lobby */
+.top{display:flex;gap:22px;align-items:stretch;margin-top:14px;flex-wrap:wrap;justify-content:center}
+.panel{background:var(--panel);border:2px solid var(--line);border-radius:20px;padding:16px 20px}
+#join{display:flex;gap:18px;align-items:center}
+#qr{background:#fff;border-radius:14px;padding:10px;width:180px;height:180px}#qr svg{width:100%;height:100%}
+.code{font-family:"Lilita One",sans-serif;font-size:56px;letter-spacing:8px;color:var(--y)}
+.small{font-size:14px;color:#b9c6da}
+#plist{display:grid;grid-template-columns:repeat(4,150px);gap:10px}
+.pl{border-radius:16px;border:2px dashed var(--line);height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.pl.on{border-style:solid;background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.03))}
+.pl.off{opacity:.45}
+.pl .n{font-weight:900;font-size:16px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl .a{font-size:12px;color:#b9c6da}
+.pl .free{color:#6b7790;font-weight:800}
+.label{font-family:"Lilita One",sans-serif;font-size:22px;margin:16px 0 8px;color:#ffe9d6}
+#maps{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+.mcard{width:250px;border-radius:18px;background:var(--panel);border:3px solid transparent;padding:10px;cursor:pointer;display:flex;flex-direction:column;gap:4px}
+.mcard canvas{width:100%;border-radius:10px;background:#222;aspect-ratio:1.5;object-fit:contain}
+.mcard b{font-family:"Lilita One",sans-serif;font-size:22px;color:#fff}.mcard span{font-size:12px;color:#b9c6da}
+.mcard.sel{border-color:var(--y);box-shadow:0 0 0 4px rgba(255,207,58,.25);background:linear-gradient(160deg,rgba(255,207,58,.15),rgba(255,255,255,.04))}
+#opts{display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;max-width:1100px}
+.opt{display:flex;align-items:center;gap:6px;font-weight:800;font-size:14px}
+.opt span{color:#b9c6da;margin-right:4px}
+.opt button{border:0;border-radius:10px;padding:6px 11px;background:#24304a;color:#fff;font-weight:800;cursor:pointer}
+.opt button.sel{background:var(--y);color:#2a1a00}
+.btn{font-family:"Lilita One",sans-serif;font-size:28px;border:0;border-radius:18px;padding:12px 34px;background:var(--red);color:#fff;cursor:pointer;box-shadow:0 6px 0 #8a1f15;margin-top:18px}
+.btn:disabled{background:#4a5470;box-shadow:0 6px 0 #2a3248;cursor:default}
+.rules{max-width:1100px;font-size:14px;color:#b9c6da;text-align:center;margin-top:12px;line-height:1.5}
+.rules b{color:#fff}
+/* Meeting */
+#s-meet{background:rgba(8,10,20,.82);justify-content:center}
+#mtitle{font-family:"Lilita One",sans-serif;font-size:64px;color:var(--y);text-shadow:0 5px 0 #6a1a14}
+#msub{font-size:24px;font-weight:800;margin:4px 0 16px}
+#mgrid,#ogrid{display:grid;grid-template-columns:repeat(5,170px);gap:14px;justify-content:center}
+.mp{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px;border-radius:16px;background:var(--panel);border:2px solid var(--line);position:relative}
+.mp .n{font-weight:900;font-size:17px}
+.mp.dead{opacity:.55}
+.mp.voted::after{content:"✔";position:absolute;right:10px;top:8px;background:#3fd66a;color:#082;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:900}
+.mp .vs{display:flex;flex-wrap:wrap;gap:2px;justify-content:center;min-height:20px}
+.mp .r{font-size:13px;color:#b9c6da;font-weight:800}
+.mp.mole{border-color:var(--red);background:rgba(255,74,61,.12)}.mp.mole .r{color:var(--red)}
+#mskipRow{margin-top:12px;font-weight:800;display:flex;gap:8px;align-items:center}
+#mstage{margin-top:18px;font-size:30px;font-weight:800;text-align:center;min-height:80px}
+#mstage .red{color:var(--red)}
+/* Ende */
+#s-over{justify-content:center;background:rgba(8,10,20,.6)}
+#otitle{font-family:"Lilita One",sans-serif;font-size:72px;margin:0}
+#otitle.blue{color:var(--blue);text-shadow:0 5px 0 #1a3a6a}#otitle.red{color:var(--red);text-shadow:0 5px 0 #5a1010}
+#owhy{font-size:26px;font-weight:800;margin:6px 0 20px}
+#flash{position:fixed;left:50%;bottom:30px;transform:translate(-50%,200%);background:#24304a;border:2px solid var(--y);padding:12px 22px;border-radius:14px;font-weight:800;font-size:20px;transition:transform .3s;z-index:50}
+#flash.on{transform:translate(-50%,0)}
+#netst{position:fixed;right:12px;bottom:8px;font-size:12px;color:#7d8aa3}
+</style>
+</head>
+<body data-scr="lobby">
+<a id="home" href="../">🏠 Timtendo</a>
+<canvas id="tv"></canvas>
+
+<div class="scr on" id="s-lobby">
+  <h1>Wer war's? <small>Einer von euch ist der Maulwurf.</small></h1>
+  <div class="top">
+    <div class="panel" id="join"><div id="qr"></div><div><div class="small">Jeder scannt mit seinem Handy</div><div id="joinurl" class="small" style="max-width:240px;word-break:break-all"></div><div class="small" style="margin-top:8px">Raum-Code</div><div class="code" id="code">····</div></div></div>
+    <div class="panel"><div id="plist"></div></div>
+  </div>
+  <div class="label">Karte</div>
+  <div id="maps"></div>
+  <div class="label">Regeln</div>
+  <div id="opts"></div>
+  <button class="btn" id="startBtn">▶ Runde starten</button>
+  <div class="rules"><b>Team:</b> Aufgaben erledigen und herausfinden, wer der Maulwurf ist. <b>Maulwurf:</b> heimlich Leute ausknocken, sabotieren, durch Klappen abhauen – und beim Meeting lügen. Ausgeknockte werden zu Geistern und helfen leise weiter. Bei einem Fund oder an der Glocke wird diskutiert und abgestimmt.</div>
+</div>
+
+<div class="scr" id="s-game"></div>
+
+<div class="scr" id="s-meet">
+  <div id="mtitle"></div>
+  <div id="msub"></div>
+  <div id="mgrid"></div>
+  <div id="mskipRow">Überspringen: <span id="mskip"></span></div>
+  <div id="mstage"></div>
+</div>
+
+<div class="scr" id="s-over">
+  <h2 id="otitle"></h2>
+  <div id="owhy"></div>
+  <div id="ogrid"></div>
+  <button class="btn" id="againBtn">🔁 Zurück zur Lobby</button>
+</div>
+
+<div id="flash"></div>
+<div id="netst"></div>
+<script src="../vendor/peerjs.min.js"></script>
+<script src="../js/mqttlite.js"></script>
+<script src="../vendor/qrcode.js"></script>
+<script type="module" src="host.js"></script>
+</body>
+</html>

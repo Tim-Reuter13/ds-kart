@@ -101,6 +101,7 @@ const state = {
 
 function show(id) {
   for (const s of document.querySelectorAll(".screen")) s.classList.toggle("on", s.id === "s-" + id || (id === "pause" && s.id === "pause"));
+  document.body.classList.toggle("inmenu", id === "title" || id === "lobby");
   state.screen = id;
   if (id !== "race" && id !== "pause") { const g = hudCanvas.getContext("2d"); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, hudCanvas.width, hudCanvas.height); }
   for (const pid of net.phones.keys()) if (!waiting.has(pid)) net.send(pid, { t: "mode", m: id === "race" ? "race" : id === "lobby" ? "pick" : "menu" });
