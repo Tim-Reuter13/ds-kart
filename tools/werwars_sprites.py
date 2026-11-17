@@ -93,17 +93,21 @@ def aileen():
     for i, c in enumerate(frames): place(strip, c, i, scale)
     return strip
 
-# Groesse im Spiel (Meter, Stehhoehe) - Giovanni ist eine Katze
-HEIGHT = {"tim": 1.8, "sonja": 1.65, "jannik": 1.8, "franzi": 1.68, "papa": 1.78, "kinga": 1.68, "aileen": 1.66, "giovanni": 0.9}
-meta = {}
-ids = sys.argv[1:] or ["tim", "sonja", "jannik", "franzi", "papa", "kinga", "giovanni", "aileen"]
-for cid in ids:
-    strip = aileen() if cid == "aileen" else from_sheet(cid, os.path.join(SRC, cid + "_sheet.png"), HEIGHT[cid])
-    strip.save(os.path.join(OUT, cid + ".webp"), quality=90, alpha_quality=95, method=6)
-    a = np.asarray(strip)[..., 3]
-    print(cid, "ok", os.path.getsize(os.path.join(OUT, cid + ".webp")) // 1024, "KB")
-    meta[cid] = {"h": HEIGHT[cid]}
-mp = os.path.join(OUT, "sprites.json")
-old = json.load(open(mp)) if os.path.exists(mp) else {}
-old.update(meta)
-json.dump(old, open(mp, "w"), indent=1)
+def main():
+    # Groesse im Spiel (Meter, Stehhoehe) - Giovanni ist eine Katze
+    HEIGHT = {"tim": 1.8, "sonja": 1.65, "jannik": 1.8, "franzi": 1.68, "papa": 1.78, "kinga": 1.68, "aileen": 1.66, "giovanni": 0.9}
+    meta = {}
+    ids = sys.argv[1:] or ["tim", "sonja", "jannik", "franzi", "papa", "kinga", "giovanni", "aileen"]
+    for cid in ids:
+        strip = aileen() if cid == "aileen" else from_sheet(cid, os.path.join(SRC, cid + "_sheet.png"), HEIGHT[cid])
+        strip.save(os.path.join(OUT, cid + ".webp"), quality=90, alpha_quality=95, method=6)
+        a = np.asarray(strip)[..., 3]
+        print(cid, "ok", os.path.getsize(os.path.join(OUT, cid + ".webp")) // 1024, "KB")
+        meta[cid] = {"h": HEIGHT[cid]}
+    mp = os.path.join(OUT, "sprites.json")
+    old = json.load(open(mp)) if os.path.exists(mp) else {}
+    old.update(meta)
+    json.dump(old, open(mp, "w"), indent=1)
+
+if __name__ == "__main__":
+    main()

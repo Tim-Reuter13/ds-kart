@@ -258,7 +258,7 @@ export function visPoly(m, x, y, R, rays = 160) {
   for (let k = 0; k < rays; k++) {
     const a = k / rays * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
     let d = 0;
-    while (d < R) { d += 0.18; const c = m.cell(x + ca * d, y + sa * d); if (c === WALL || c === VOID) { d += 0.35; break; } }
+    while (d < R) { d += 0.09; const c = m.cell(x + ca * d, y + sa * d); if (c === WALL || c === VOID) { d += 0.8; break; } } // Wand selbst noch zeigen
     d = Math.min(d, R);
     pts.push(x + ca * d, y + sa * d);
   }
@@ -270,14 +270,60 @@ export function nearestFree(m, x, y) {
   return [x, y];
 }
 
+// ---------------------------------------------------------------- Fotorealistische Assets (von Codex, siehe tools/werwars_assets.py)
+// Boden-Textur je Bodenart: [Datei, Meter pro Kachel]
+const FLOOR_TEX = { k: ["kitchen", 1.6], r: ["dining", 2.4], t: ["whitetiles", 1.2], m: ["concrete", 4], w: ["wood", 2.6], c: ["carpet", 2], a: ["asphalt", 4], p: ["slabs", 3], s: ["showroom", 3.2], y: ["kidsmat", 2] };
+const PROP_TEX = {
+  grill: "grill", fryer: "fryer", prep: "burgerstation", steel: "steelcounter", sink: "sink2", fridge: "freezer", toaster: "toaster", icemachine: "icemachine",
+  drinks: "drinks", coffee: "coffee", vitrine: "vitrine", bin3: "bins3", table: "table4", table2: "table2", booth: "booth", sofa: "sofa", plant: "plant",
+  playpit: "ballpit", kiosk: "kiosk", counter: "counter", desk: "desk", safe: "safe", locker: "lockers", toilet: "toilet",
+  pump: "pump", air: "airstation", vacuum: "vacuum", brush: "washbrush", pricesign: "pricesign", panel: "terminal", shelf: "shelf", bakery: "bakery",
+  pfand: "pfand", pallet: "pallet", bin: "bin", tirerack: "tirerack", diag: "diag", oil: "oildrums", keybox: "keybox", hedge: "hedge",
+  boxes: "boxes", coldroom: "coldroom", register: "terminal", friesout: "fryer", lift: "lift",
+};
+const CARS = [["car_white", "#e9ebee"], ["car_silver", "#c9ced6"], ["car_blue", "#1f62b8"], ["car_red", "#b31b1b"], ["car_black", "#2a2c30"], ["car_green", "#3c6e3a"]];
+function carFor(col = "#999999") {
+  const n = parseInt(col.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255];
+  let best = CARS[0][0], bd = 1e9;
+  for (const [k, h] of CARS) { const q = parseInt(h.slice(1), 16), d = (c[0] - (q >> 16)) ** 2 + (c[1] - ((q >> 8) & 255)) ** 2 + (c[2] - (q & 255)) ** 2; if (d < bd) { bd = d; best = k; } }
+  return best;
+}
+// passendes Foto je Moebel (manche Arten sehen je nach Ort anders aus)
+function texFor(p, m) {
+  if (p.k === "car") return carFor(p.color);
+  if (p.label === "Werkbank") return "workbench";
+  if (p.label === "Getränke" && m.def.id === "total") return "drinkfridge";
+  if (p.k === "sink" && !p.label) return "washbasin";
+  if (p.k === "table2" && m.def.id === "moll") return "coffeetable";
+  if (p.k === "shelf" && m.def.id === "moll") return "boxes";
+  if (p.k === "plant" && m.def.id === "moll") return "planter";
+  return PROP_TEX[p.k];
+}
+let ASSETS = null;
+export function loadMapAssets(base = "assets/") {
+  if (ASSETS) return ASSETS;
+  const img = (src) => new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+  ASSETS = fetch(base + "manifest.json").then(r => r.ok ? r.json() : null).catch(() => null).then(async (man) => {
+    const A = { floor: {}, prop: {} };
+    if (!man) return A;
+    await Promise.all([
+      ...man.floors.map(n => img(base + "floors/" + n + ".jpg").then(im => { if (im) A.floor[n] = im; })),
+      ...Object.keys(man.props).map(n => img(base + "props/" + n + ".webp").then(im => { if (im) A.prop[n] = im; })),
+    ]);
+    return A;
+  });
+  return ASSETS;
+}
+
 // ---------------------------------------------------------------- Zeichnen (vorberechnet in ein Bild)
 function rnd(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 function rr(g, x, y, w, h, r) { r = Math.min(r, w / 2, h / 2); g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 function shade(hex, k) { const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255; const f = (c) => Math.max(0, Math.min(255, Math.round(k < 0 ? c * (1 + k) : c + (255 - c) * k))); return "#" + ((1 << 24) + (f(r) << 16) + (f(g) << 8) + f(b)).toString(16).slice(1); }
 
-export function renderMap(m, S = 32) {
+export function renderMap(m, S = 32, A = null) {
   const cv = document.createElement("canvas"); cv.width = m.W * S; cv.height = m.H * S;
   const g = cv.getContext("2d"), R = rnd(m.W * 31 + m.H);
+  if (A && Object.keys(A.floor).length) return renderReal(m, S, A, cv, g);
   // Aussen
   const outCol = m.def.outside === "grass" ? ["#5f8f45", "#56853e"] : ["#55595e", "#4e5257"];
   g.fillStyle = outCol[0]; g.fillRect(0, 0, cv.width, cv.height);
@@ -322,6 +368,79 @@ export function renderMap(m, S = 32) {
   g.font = `900 ${S * 0.45}px Nunito, Arial, sans-serif`; g.textAlign = "center"; g.textBaseline = "middle";
   for (const w of m.def.windows) if (w[4]) { g.fillStyle = "rgba(255,255,255,.95)"; g.fillText(w[4], (w[0] + (w[2] || 1) / 2) * S, (w[1] + 1.25) * S); }
   return cv;
+}
+
+// Fotorealistische Variante: Texturen fuer Boeden/Waende, Fotos von oben fuer die Moebel
+function renderReal(m, S, A, cv, g) {
+  const pat = (name, meters) => { const im = A.floor[name]; if (!im) return null; const p = g.createPattern(im, "repeat"); p.setTransform(new DOMMatrix().scale(meters * S / im.width)); return p; };
+  const outside = pat(m.def.outside === "grass" ? "grass" : "asphalt", m.def.outside === "grass" ? 3 : 4);
+  g.fillStyle = outside || "#4e5257"; g.fillRect(0, 0, cv.width, cv.height);
+  if (m.def.outside !== "grass") { g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(0, 0, cv.width, cv.height); }
+  const pats = {};
+  for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+    const i = y * m.W + x; if (m.cells[i] !== 3) continue;
+    const f = m.floor[i], ft = FLOOR_TEX[f];
+    if (!(f in pats)) pats[f] = ft ? pat(ft[0], ft[1]) : null;
+    g.fillStyle = pats[f] || (FLOORS[f] || FLOORS.m).a; g.fillRect(x * S, y * S, S + 0.5, S + 0.5);
+  }
+  if (m.def.id === "total") { g.strokeStyle = "rgba(255,255,255,.75)"; g.lineWidth = S * 0.1; g.setLineDash([S * 0.8, S * 0.6]); g.beginPath(); g.moveTo(1 * S, 30.5 * S); g.lineTo(46 * S, 30.5 * S); g.stroke(); g.setLineDash([]); }
+  if (m.def.id === "moll") { g.strokeStyle = "rgba(255,255,255,.7)"; g.lineWidth = S * 0.08; for (const x of [2, 6, 10, 14, 18]) { g.beginPath(); g.moveTo(x * S + S * 0.5, 19.5 * S); g.lineTo(x * S + S * 0.5, 25 * S); g.stroke(); } }
+  // weiche Verschattung an den Waenden
+  for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+    if (m.cells[y * m.W + x] !== 3 || m.out[y * m.W + x]) continue;
+    const w = (xx, yy) => { const c = m.cell(xx, yy); return c === WALL || c === GLASS; };
+    const sh = (x0, y0, x1, y1, a) => { const gr = g.createLinearGradient(x0, y0, x1, y1); gr.addColorStop(0, "rgba(0,0,0," + a + ")"); gr.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = gr; };
+    if (w(x, y - 1)) { sh(0, y * S, 0, y * S + S * 0.9, 0.38); g.fillRect(x * S, y * S, S, S * 0.9); }
+    if (w(x - 1, y)) { sh(x * S, 0, x * S + S * 0.5, 0, 0.22); g.fillRect(x * S, y * S, S * 0.5, S); }
+    if (w(x + 1, y)) { sh(x * S + S, 0, x * S + S * 0.5, 0, 0.22); g.fillRect(x * S + S * 0.5, y * S, S * 0.5, S); }
+  }
+  for (const p of m.props) drawPropReal(g, p, S, A, m);
+  if (m.def.canopy) { const c = m.def.canopy; g.fillStyle = "rgba(255,255,255,.06)"; rr(g, c.x * S, c.y * S, c.w * S, c.h * S, S * 0.3); g.fill(); g.strokeStyle = "rgba(226,0,26,.9)"; g.lineWidth = S * 0.18; g.stroke(); }
+  // Waende: Oberseite mit Textur, Vorderseite als helle Wandflaeche
+  const wallPat = pat("wall", 2);
+  for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+    const c = m.cells[y * m.W + x];
+    if (c === WALL) {
+      g.fillStyle = wallPat || "#4b5260"; g.fillRect(x * S, y * S, S + 0.5, S + 0.5);
+      g.fillStyle = "rgba(20,24,32,.55)"; g.fillRect(x * S, y * S, S + 0.5, S + 0.5);
+      if (m.cell(x, y + 1) === 3) { const gr = g.createLinearGradient(0, y * S + S * 0.45, 0, y * S + S); gr.addColorStop(0, "#d9d3c7"); gr.addColorStop(1, "#a59d90"); g.fillStyle = gr; g.fillRect(x * S, y * S + S * 0.45, S + 0.5, S * 0.55); g.fillStyle = "rgba(0,0,0,.25)"; g.fillRect(x * S, y * S + S * 0.93, S + 0.5, S * 0.07); }
+    } else if (c === GLASS) {
+      // Glas: Ausrichtung nach den Nachbarn (Wand laeuft waagrecht oder senkrecht)
+      const vert = [m.cell(x, y - 1), m.cell(x, y + 1)].some(v => v === WALL || v === GLASS) && ![m.cell(x - 1, y), m.cell(x + 1, y)].some(v => v === WALL || v === GLASS);
+      const gr = g.createLinearGradient(x * S, y * S, x * S + S, y * S + S); gr.addColorStop(0, "rgba(170,215,240,.85)"); gr.addColorStop(1, "rgba(110,160,195,.85)"); g.fillStyle = gr;
+      if (vert) {
+        g.fillRect(x * S + S * 0.3, y * S, S * 0.4, S + 0.5); g.fillStyle = "rgba(255,255,255,.55)"; g.fillRect(x * S + S * 0.35, y * S + S * 0.1, S * 0.07, S * 0.45);
+        g.fillStyle = "#30343c"; g.fillRect(x * S + S * 0.26, y * S, S * 0.05, S + 0.5); g.fillRect(x * S + S * 0.69, y * S, S * 0.05, S + 0.5);
+      } else {
+        g.fillRect(x * S, y * S + S * 0.3, S + 0.5, S * 0.4); g.fillStyle = "rgba(255,255,255,.55)"; g.fillRect(x * S + S * 0.1, y * S + S * 0.35, S * 0.45, S * 0.07);
+        g.fillStyle = "#30343c"; g.fillRect(x * S, y * S + S * 0.26, S + 0.5, S * 0.05); g.fillRect(x * S, y * S + S * 0.69, S + 0.5, S * 0.05);
+      }
+    }
+  }
+  g.font = "900 " + (S * 0.45) + "px Nunito, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  for (const w of m.def.windows) if (w[4]) { g.fillStyle = "rgba(255,255,255,.95)"; g.fillText(w[4], (w[0] + (w[2] || 1) / 2) * S, (w[1] + 1.25) * S); }
+  return cv;
+}
+// Foto in die Moebelflaeche einpassen: Seitenverhaeltnis bleibt grob erhalten, bis 30 % Strecken erlaubt
+function drawImgFit(g, im, X, Y, W, H, rot) {
+  const iw = rot ? im.height : im.width, ih = rot ? im.width : im.height, k = Math.min(W / iw, H / ih);
+  const sx = Math.min(W / iw, k * 1.3) * 1.03, sy = Math.min(H / ih, k * 1.3) * 1.03;
+  g.save(); g.translate(X + W / 2, Y + H / 2); if (rot) g.rotate(Math.PI / 2);
+  const ax = rot ? sy : sx, ay = rot ? sx : sy;
+  g.drawImage(im, -im.width * ax / 2, -im.height * ay / 2, im.width * ax, im.height * ay); g.restore();
+}
+function drawPropReal(g, p, S, A, m) {
+  const X = p.x * S, Y = p.y * S, W = p.w * S, H = p.h * S;
+  const name = texFor(p, m);
+  const im = name && A.prop[name];
+  if (!im) { drawProp(g, p, S, m); return; }
+  const round = p.k === "plant" || p.k === "bin" || p.k === "safe";
+  const rot = !round && ((H > W * 1.15) !== (im.height > im.width * 1.15));
+  g.save(); g.shadowColor = "rgba(0,0,0,.45)"; g.shadowBlur = S * 0.25; g.shadowOffsetX = S * 0.06; g.shadowOffsetY = S * 0.12;
+  drawImgFit(g, im, X, Y, W, H, rot);
+  if (p.k === "lift" && !p.empty) { const c = A.prop[carFor(p.color)]; if (c) drawImgFit(g, c, X + S * 0.5, Y + S * 0.3, W - S, H - S * 0.6, H > W); }
+  g.restore();
+  if (p.label) { g.font = "900 " + (S * 0.3) + "px Nunito, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "bottom"; g.lineWidth = S * 0.09; g.strokeStyle = "rgba(0,0,0,.7)"; g.lineJoin = "round"; g.strokeText(p.label, X + W / 2, Y - S * 0.05); g.fillStyle = "#fff"; g.fillText(p.label, X + W / 2, Y - S * 0.05); }
 }
 
 function drawFloor(g, x, y, S, F, R) {

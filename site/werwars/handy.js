@@ -1,5 +1,5 @@
 // "Wer war's?" – Handy: eigener Bildschirm (Sichtradius), Steuerung, Aufgaben, Meeting
-import { MAPS, buildMap, renderMap, moveCircle, visPoly, roomLabels, blocked } from "./maps.js";
+import { MAPS, buildMap, renderMap, moveCircle, visPoly, roomLabels, blocked, loadMapAssets } from "./maps.js";
 import { AVATARS, loadAvatars, drawChar, bustCanvas, avatarOf } from "./chars.js";
 import { GAMES, TASK_CSS } from "./tasks.js";
 
@@ -89,14 +89,14 @@ async function startRound(m) {
   S.me = m.me; S.role = m.role; S.mates = m.mates; S.tasks = m.tasks; S.done = new Set(m.done || []); S.players = m.players; S.alive = m.alive !== false;
   S.x = m.x; S.y = m.y; S.others.clear(); S.bodies = []; S.sab = null; S.meet = null; S.ghostSeen = !S.alive;
   const def = MAPS.find(d => d.id === m.map);
-  if (!S.map || S.map.id !== def.id) { S.map = buildMap(def); S.mapImg = renderMap(S.map, S.MS); }
+  if (!S.map || S.map.id !== def.id) { S.map = buildMap(def); S.mapImg = renderMap(S.map, S.MS, await loadMapAssets("assets/")); }
   show("game"); renderTasks(); setupActs();
-  $("#roleTag").textContent = S.role === "mole" ? "MAULWURF" : "TEAM";
+  $("#roleTag").textContent = S.role === "mole" ? "VERRÄTER" : "CREW";
   $("#roleTag").style.background = S.role === "mole" ? "var(--red)" : "var(--blue)";
   if (m.intro > 0) {
-    $("#roleBig").textContent = S.role === "mole" ? "MAULWURF" : "TEAM";
+    $("#roleBig").textContent = S.role === "mole" ? "VERRÄTER" : "CREW";
     $("#roleBig").style.color = S.role === "mole" ? "var(--red)" : "var(--blue)";
-    $("#roleSub").textContent = S.role === "mole" ? "Knock heimlich alle aus und lass dich beim Meeting nicht erwischen. Deine Aufgaben sind nur Tarnung." : `Erledigt alle Aufgaben und findet heraus, wer der Maulwurf ist.`;
+    $("#roleSub").textContent = S.role === "mole" ? "Kill heimlich die Crew, sabotiere, flieh durch die Schächte – und lüg beim Meeting. Deine Aufgaben sind nur Tarnung." : `Erledigt alle Aufgaben und findet heraus, wer der Verräter ist.`;
     const mates = $("#roleMates"); mates.innerHTML = "";
     if (S.role === "mole") for (const id of S.mates) { const p = S.players.find(q => q.id === id); if (p) { const d = document.createElement("div"); d.style.textAlign = "center"; d.append(bustCanvas(p.av, 48)); d.append(document.createTextNode(p.name)); mates.append(d); } }
     ov("ovRole", true); vib([60, 60, 60]); tone(S.role === "mole" ? 220 : 660, 0.4, "triangle", 0.12);
@@ -255,13 +255,13 @@ $("#vskip").onclick = () => { if (S.myVote === "skip") { link.send({ t: "vote", 
 function resultText(r) {
   if (!r) return "";
   if (!r.out) return r.tie ? "⚖️ Gleichstand – niemand fliegt raus." : "🤷 Übersprungen.";
-  return `👋 ${r.name} fliegt raus.` + (r.confirm ? (r.wasMole ? " Das war ein Maulwurf!" : " Das war kein Maulwurf.") : "");
+  return `👋 ${r.name} fliegt raus.` + (r.confirm ? (r.wasMole ? " Das war ein Verräter!" : " Das war kein Verräter.") : "");
 }
 
 // ---------------- Tot / Ende
 function died(m) {
   S.alive = false; closeTask(); setupActs(); renderTasks();
-  $("#deadT").textContent = m.ejected ? "Rausgeflogen!" : "Ausgeknockt!";
+  $("#deadT").textContent = m.ejected ? "Rausgeworfen!" : "Gekillt!";
   const by = $("#deadBy"); by.innerHTML = "";
   if (m.by) { by.append(bustCanvas(m.by, 70)); by.append(Object.assign(document.createElement("div"), { textContent: "Das war " + avatarOf(m.by).name + " …", style: "text-align:center;font-weight:800" })); }
   $("#deadSub").textContent = S.role === "team" ? "Du bist jetzt ein Geist: niemand sieht dich, aber du kannst weiter Aufgaben machen. Nicht verraten, wer's war! 🤐" : "Als Geist kannst du nur noch zuschauen.";
@@ -271,7 +271,7 @@ $("#deadOk").onclick = () => ov("ovDead", false);
 function over(m) {
   closeAllOv();
   const won = (m.win === "team") === (S.role === "team");
-  $("#oT").textContent = (won ? "🎉 Gewonnen!" : "😵 Verloren") + (m.win === "team" ? " · Team" : " · Maulwurf");
+  $("#oT").textContent = (won ? "🎉 Gewonnen!" : "😵 Verloren") + (m.win === "team" ? " · Crew" : " · Verräter");
   $("#oT").style.color = won ? "#6aff7a" : "var(--red)";
   $("#oWhy").textContent = m.why;
   const L = $("#oList"); L.innerHTML = "";
@@ -361,7 +361,7 @@ function draw(t) {
   // Dunkelheit ausserhalb der Sicht (Geister sehen alles)
   if (S.alive) {
     const R = (S.role === "mole" ? 8.5 : S.sab?.k === "lights" ? 2.3 : 6.2);
-    const poly = visPoly(M, S.x, S.y - 0.3, R, 140);
+    const poly = visPoly(M, S.x, S.y - 0.3, R, 240);
     if (!draw.fog) draw.fog = document.createElement("canvas");
     const fog = draw.fog; if (fog.width !== cv.width || fog.height !== cv.height) { fog.width = cv.width; fog.height = cv.height; }
     const f = fog.getContext("2d");
@@ -388,7 +388,7 @@ function draw(t) {
 }
 function ring(x, y, r, col) { g.strokeStyle = col; g.lineWidth = r * 0.22; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke(); }
 
-loadAvatars("sprites/");
+loadAvatars("sprites/"); loadMapAssets("assets/");
 idleStick();
 // Testhilfe: ?auto=1 laeuft zufaellig herum
 if (qs.has("bot")) setInterval(() => { if (S.scr === "game") { jx = Math.cos(performance.now() / 1700 + (+SLOT || 0)); jy = Math.sin(performance.now() / 2300 + (+SLOT || 0)); } }, 200);

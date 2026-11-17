@@ -12,6 +12,8 @@
 body.light{--bg1:#e9edf3;--bg2:#f7f8fb;--panel:rgba(0,0,0,.05);--line:rgba(0,0,0,.1);--txt:#1d2433;--dim:#5d6880;--glow:#0aa3e0}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden;background:radial-gradient(ellipse at 50% -20%,var(--bg2),var(--bg1) 70%);color:var(--txt);font-family:Nunito,system-ui,sans-serif;user-select:none}
+#bgimg{position:fixed;inset:-30px;background:url(werwars/assets/bg/timtendo_bg.jpg) center/cover no-repeat;filter:blur(10px) brightness(.55) saturate(1.25);transform:scale(1.04);z-index:-1}
+body.light #bgimg{filter:blur(16px) brightness(1.15) saturate(.7);opacity:.45}
 #home{position:fixed;inset:0;display:flex;flex-direction:column;opacity:0;transition:opacity .5s}
 #home.on{opacity:1}
 /* Kopfzeile */
@@ -68,6 +70,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:radial-gradient(ellips
 <body>
 <div id="boot"><div class="tlogo">Tim<span class="pill"></span>tendo</div><div class="hint">Drück irgendwas</div></div>
 
+<div id="bgimg"></div>
 <div id="home">
   <div id="top">
     <div id="users"></div>
@@ -125,28 +128,32 @@ const jingle = () => { [523, 784, 1047, 1319].forEach((f, i) => tone(f, 0.14, i 
 function coverWerwars(cv) {
   const g = cv.getContext("2d"), S = cv.width = cv.height = 600;
   const gr = g.createLinearGradient(0, 0, S, S); gr.addColorStop(0, "#2b0f1e"); gr.addColorStop(1, "#7a1c1c"); g.fillStyle = gr; g.fillRect(0, 0, S, S);
-  // Lichtkegel
-  const rg = g.createRadialGradient(S * .5, S * .42, 20, S * .5, S * .42, S * .55); rg.addColorStop(0, "rgba(255,210,120,.55)"); rg.addColorStop(1, "rgba(255,210,120,0)"); g.fillStyle = rg; g.fillRect(0, 0, S, S);
+  const cover = new Image(); cover.src = "werwars/assets/bg/werwars_cover.jpg";
+  let base = false;
+  cover.onload = () => { base = true; g.drawImage(cover, 0, 0, S, S); const sh = g.createLinearGradient(0, 0, 0, S); sh.addColorStop(0, "rgba(0,0,0,.25)"); sh.addColorStop(0.6, "rgba(0,0,0,.1)"); sh.addColorStop(1, "rgba(0,0,0,.55)"); g.fillStyle = sh; g.fillRect(0, 0, S, S); if (n >= ids.length) { faces.forEach(f => f()); title(); } };
+  const faces = [];
   const ids = ["sonja", "tim", "kinga", "jannik", "aileen"];
   let n = 0;
   ids.forEach((id, k) => {
     const im = new Image(); im.src = "sprites/" + id + "/portrait.webp";
     im.onload = () => {
-      const x = 70 + k * 115, y = k % 2 ? 300 : 270, r = 56;
+      const x = 70 + k * 115, y = k % 2 ? 330 : 300, r = 52;
+      const draw = () => {
       g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip();
       g.drawImage(im, x - r, y - r, r * 2, r * 2);
       if (k === 2) { g.fillStyle = "rgba(0,0,0,.82)"; g.fillRect(x - r, y - r, r * 2, r * 2); }
       g.restore();
       g.lineWidth = 6; g.strokeStyle = k === 2 ? "#ffcf3a" : "#fff"; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke();
       if (k === 2) { g.fillStyle = "#ffcf3a"; g.font = "900 80px Nunito, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("?", x, y + 4); }
+      };
+      faces.push(draw); draw();
       if (++n === ids.length) title();
     };
   });
   function title() {
     g.textAlign = "center"; g.font = "120px 'Lilita One', sans-serif";
     g.lineWidth = 16; g.strokeStyle = "#2b0f1e"; g.lineJoin = "round"; g.strokeText("Wer war's?", S / 2, 150); g.fillStyle = "#ffcf3a"; g.fillText("Wer war's?", S / 2, 150);
-    g.font = "800 30px Nunito, sans-serif"; g.fillStyle = "#ffe9d6"; g.fillText("Einer von euch ist der Maulwurf.", S / 2, 470);
-    g.font = "60px sans-serif"; g.fillText("🔍", S / 2, 545);
+    g.font = "800 30px Nunito, sans-serif"; g.fillStyle = "#ffe9d6"; g.lineWidth = 6; g.strokeStyle = "rgba(0,0,0,.6)"; g.strokeText("Einer von euch ist der Verräter.", S / 2, 520); g.fillText("Einer von euch ist der Verräter.", S / 2, 520);
   }
 }
 function coverKart(t) {
@@ -223,7 +230,7 @@ function ok() {
   if ($("#modal").classList.contains("on")) { closeModal(); return; }
   if (sel.row === 0) launch(); else BTNS[sel.i].act();
 }
-function wake() { if (booted) return; booted = true; ctx(); jingle(); $("#boot").classList.add("off"); $("#home").classList.add("on"); }
+function wake() { if (booted) return; booted = true; ctx(); jingle(); const b = $("#boot"); b.style.opacity = "0"; setTimeout(() => b.classList.add("off"), 450); $("#home").classList.add("on"); } // Klick fuers Aufwecken nicht an die Knoepfe darunter durchreichen
 addEventListener("keydown", (e) => {
   if (!booted) { wake(); return; }
   if ($("#sleep").classList.contains("on")) { $("#sleep").classList.remove("on"); return; }

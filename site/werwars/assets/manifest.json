@@ -1,0 +1,239 @@
+{
+ "floors": [
+  "asphalt",
+  "carpet",
+  "concrete",
+  "dining",
+  "grass",
+  "kidsmat",
+  "kitchen",
+  "showroom",
+  "slabs",
+  "wall",
+  "whitetiles",
+  "wood"
+ ],
+ "props": {
+  "grill": [
+   310,
+   245
+  ],
+  "fryer": [
+   285,
+   316
+  ],
+  "burgerstation": [
+   330,
+   203
+  ],
+  "steelcounter": [
+   346,
+   174
+  ],
+  "sink2": [
+   311,
+   205
+  ],
+  "freezer": [
+   321,
+   220
+  ],
+  "toaster": [
+   290,
+   234
+  ],
+  "icemachine": [
+   246,
+   279
+  ],
+  "drinks": [
+   343,
+   243
+  ],
+  "coffee": [
+   322,
+   272
+  ],
+  "vitrine": [
+   350,
+   221
+  ],
+  "bins3": [
+   340,
+   157
+  ],
+  "table4": [
+   274,
+   281
+  ],
+  "table2": [
+   310,
+   154
+  ],
+  "booth": [
+   317,
+   196
+  ],
+  "sofa": [
+   314,
+   182
+  ],
+  "plant": [
+   269,
+   257
+  ],
+  "ballpit": [
+   269,
+   261
+  ],
+  "kiosk": [
+   205,
+   199
+  ],
+  "counter": [
+   363,
+   115
+  ],
+  "desk": [
+   305,
+   286
+  ],
+  "safe": [
+   210,
+   194
+  ],
+  "lockers": [
+   351,
+   150
+  ],
+  "toilet": [
+   162,
+   277
+  ],
+  "car_white": [
+   422,
+   244
+  ],
+  "car_silver": [
+   467,
+   250
+  ],
+  "car_blue": [
+   447,
+   251
+  ],
+  "car_red": [
+   443,
+   242
+  ],
+  "car_black": [
+   470,
+   250
+  ],
+  "car_green": [
+   422,
+   241
+  ],
+  "pump": [
+   348,
+   131
+  ],
+  "airstation": [
+   253,
+   218
+  ],
+  "vacuum": [
+   244,
+   283
+  ],
+  "washbrush": [
+   344,
+   151
+  ],
+  "pricesign": [
+   297,
+   194
+  ],
+  "terminal": [
+   103,
+   211
+  ],
+  "shelf": [
+   376,
+   194
+  ],
+  "drinkfridge": [
+   370,
+   148
+  ],
+  "bakery": [
+   343,
+   198
+  ],
+  "pfand": [
+   162,
+   242
+  ],
+  "pallet": [
+   296,
+   272
+  ],
+  "bin": [
+   239,
+   277
+  ],
+  "lift": [
+   309,
+   244
+  ],
+  "tirerack": [
+   335,
+   163
+  ],
+  "workbench": [
+   339,
+   192
+  ],
+  "diag": [
+   306,
+   216
+  ],
+  "oildrums": [
+   286,
+   269
+  ],
+  "keybox": [
+   301,
+   253
+  ],
+  "hedge": [
+   354,
+   145
+  ],
+  "washbasin": [
+   270,
+   226
+  ],
+  "boxes": [
+   302,
+   230
+  ],
+  "coldroom": [
+   336,
+   227
+  ],
+  "coffeetable": [
+   322,
+   196
+  ],
+  "planter": [
+   318,
+   140
+  ]
+ },
+ "bg": [
+  "timtendo_bg",
+  "werwars_bg",
+  "werwars_cover"
+ ]
+}

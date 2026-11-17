@@ -1,6 +1,6 @@
 // "Wer war's?" – PC/Fernseher = Spielleitung. Handys = persoenlicher Bildschirm + Steuerung.
 import { Net } from "../js/net.js";
-import { MAPS, buildMap, lineOfSight, renderMap, roomLabels, nearestFree } from "./maps.js";
+import { MAPS, buildMap, lineOfSight, renderMap, roomLabels, nearestFree, loadMapAssets } from "./maps.js";
 import { AVATARS, loadAvatars, bustCanvas, avatarOf, drawChar } from "./chars.js";
 
 const $ = (s) => document.querySelector(s);
@@ -76,7 +76,7 @@ function onMsg(p, m) {
     case "done": {
       if (G.phase !== "play" || p.role !== "team" || !p.tasks.includes(m.id) || p.done.has(m.id)) break;
       const t = G.map.tasks.find(t => t.id === m.id);
-      if (t && Math.hypot(p.x - t.x, p.y - t.y) < RANGE.use + 1.2) { p.done.add(m.id); sfx("task"); checkWin(); }
+      if (t && Math.hypot(p.x - t.x, p.y - t.y) < RANGE.use + 1.2) { p.done.add(m.id); checkWin(); }
       break;
     }
     case "kill": {
@@ -106,13 +106,13 @@ function onMsg(p, m) {
     }
     case "sab": {
       if (G.phase !== "play" || p.role !== "mole" || !p.alive || G.sab || G.sabCd > 0) break;
-      if (m.k === "lights") { G.sab = { k: "lights" }; sfx("lights"); }
-      else if (m.k === "crit") { G.sab = { k: "crit", t: 45, a: new Set(), b: new Set() }; sfx("alarm"); }
+      if (m.k === "lights") { G.sab = { k: "lights" }; }
+      else if (m.k === "crit") { G.sab = { k: "crit", t: 45, a: new Set(), b: new Set() }; }
       break;
     }
     case "fixLights": {
       const f = G.map.def.fuse;
-      if (G.sab?.k === "lights" && (p.alive || p.role === "team") && Math.hypot(p.x - f.x, p.y - f.y) < RANGE.use + 1.2) { G.sab = null; G.sabCd = 30; sfx("fixed"); }
+      if (G.sab?.k === "lights" && (p.alive || p.role === "team") && Math.hypot(p.x - f.x, p.y - f.y) < RANGE.use + 1.2) { G.sab = null; G.sabCd = 30; }
       break;
     }
     case "hold": {
@@ -120,7 +120,7 @@ function onMsg(p, m) {
       const spot = G.map.def.crit[m.s]; if (!spot) break;
       const set = G.sab[m.s];
       if (m.on && Math.hypot(p.x - spot.x, p.y - spot.y) < RANGE.use + 1.2) set.add(p.id); else set.delete(p.id);
-      if (G.sab.a.size && G.sab.b.size) { G.sab = null; G.sabCd = 30; sfx("fixed"); }
+      if (G.sab.a.size && G.sab.b.size) { G.sab = null; G.sabCd = 30; }
       break;
     }
     case "hatch": {
@@ -214,9 +214,9 @@ function checkWin() {
   const tTotal = ps.filter(p => p.role === "team").reduce((s, p) => s + p.tasks.length, 0);
   const tDone = ps.filter(p => p.role === "team").reduce((s, p) => s + p.done.size, 0);
   let win = null, why = "";
-  if (moles === 0) { win = "team"; why = "Alle Maulwürfe wurden enttarnt!"; }
+  if (moles === 0) { win = "team"; why = "Alle Verräter wurden enttarnt!"; }
   else if (tTotal > 0 && tDone >= tTotal) { win = "team"; why = "Alle Aufgaben erledigt!"; }
-  else if (moles >= team) { win = "mole"; why = "Die Maulwürfe sind in der Überzahl."; }
+  else if (moles >= team) { win = "mole"; why = "Die Verräter sind in der Überzahl."; }
   if (win) gameOver(win, why);
 }
 function gameOver(win, why) {
@@ -309,9 +309,9 @@ function renderLobby() {
   document.querySelectorAll("#maps canvas").forEach(c => mapThumb(c, +c.dataset.m));
   const opt = (k, vals, fmt) => `<div class="opt"><span>${fmt.label}</span>${vals.map(v => `<button class="${SET[k] === v ? "sel" : ""}" data-k="${k}" data-v="${v}">${fmt.f(v)}</button>`).join("")}</div>`;
   $("#opts").innerHTML =
-    opt("moles", [0, 1, 2, 3], { label: "Maulwürfe", f: v => v === 0 ? "Auto" : v }) +
+    opt("moles", [0, 1, 2, 3], { label: "Verräter", f: v => v === 0 ? "Auto" : v }) +
     opt("tasks", [3, 5, 7], { label: "Aufgaben", f: v => v }) +
-    opt("cd", [20, 30, 45], { label: "Ausknock-Pause", f: v => v + " s" }) +
+    opt("cd", [20, 30, 45], { label: "Kill-Abklingzeit", f: v => v + " s" }) +
     opt("talk", [30, 45, 90], { label: "Diskussion", f: v => v + " s" }) +
     opt("vote", [20, 30, 60], { label: "Abstimmen", f: v => v + " s" }) +
     opt("vision", [0.75, 1, 1.25], { label: "Sicht", f: v => v < 1 ? "klein" : v > 1 ? "weit" : "normal" }) +
@@ -320,9 +320,10 @@ function renderLobby() {
   $("#startBtn").disabled = need > 0;
   $("#startBtn").textContent = need > 0 ? `Noch ${need} Spieler…` : "▶ Runde starten";
 }
-const thumbs = {};
+const thumbs = {}; let MAP_A = null;
+loadMapAssets("assets/").then(a => { MAP_A = a; for (const k in thumbs) delete thumbs[k]; renderLobby(); });
 function mapThumb(c, i) {
-  if (!thumbs[i]) thumbs[i] = renderMap(buildMap(MAPS[i]), 8);
+  if (!thumbs[i]) thumbs[i] = renderMap(buildMap(MAPS[i]), 10, MAP_A);
   const im = thumbs[i]; c.width = im.width; c.height = im.height; c.getContext("2d").drawImage(im, 0, 0);
 }
 $("#maps").addEventListener("click", (e) => { const c = e.target.closest("[data-i]"); if (c) { SET.map = +c.dataset.i; saveSet(); renderLobby(); lobbyBroadcast(); } });
@@ -335,7 +336,7 @@ function renderMeet() {
   const M = G.meet; if (!M) return;
   const by = G.players.get(M.by);
   $("#mtitle").textContent = M.kind === "report" ? "🚨 Gefunden!" : "🔔 Notfall-Meeting!";
-  $("#msub").textContent = M.kind === "report" ? `${by?.name} hat ${avatarOf(M.bodyAv).name} ausgeknockt gefunden.` : `${by?.name} hat die ${G.map.def.bell.n} geläutet.`;
+  $("#msub").textContent = M.kind === "report" ? `${by?.name} hat ${avatarOf(M.bodyAv).name} tot aufgefunden.` : `${by?.name} hat die ${G.map.def.bell.n} geläutet.`;
   const g = $("#mgrid"); g.innerHTML = "";
   for (const p of players()) {
     const d = document.createElement("div"); d.className = "mp" + (p.alive ? "" : " dead") + (M.votes.has(p.id) ? " voted" : "");
@@ -350,13 +351,13 @@ function renderMeet() {
   $("#mstage").innerHTML = M.stage === "talk" ? `🗣️ Diskutiert! Abstimmung in <b>${Math.max(0, Math.ceil(M.end - G.t))} s</b>`
     : M.stage === "vote" ? `🗳️ Abstimmen am Handy! Noch <b>${Math.max(0, Math.ceil(M.end - G.t))} s</b> · ${M.votes.size}/${players().filter(p => p.alive).length} haben gewählt`
     : !R.out ? (R.tie ? "⚖️ Gleichstand – niemand fliegt raus." : "🤷 Übersprungen – niemand fliegt raus.")
-    : `👋 <b>${R.name}</b> fliegt raus.` + (R.confirm ? (R.wasMole ? ` <span class="red">${R.name} war ein Maulwurf!</span>` : ` ${R.name} war <u>kein</u> Maulwurf.`) : "") + (R.confirm ? `<br><small>${R.molesLeft === 0 ? "Kein Maulwurf mehr übrig." : `Noch ${R.molesLeft} ${R.molesLeft === 1 ? "Maulwurf" : "Maulwürfe"} übrig.`}</small>` : "");
+    : `👋 <b>${R.name}</b> fliegt raus.` + (R.confirm ? (R.wasMole ? ` <span class="red">${R.name} war ein Verräter!</span>` : ` ${R.name} war <u>kein</u> Verräter.`) : "") + (R.confirm ? `<br><small>${R.molesLeft === 0 ? "Kein Verräter mehr übrig." : `Noch ${R.molesLeft} "Verräter" übrig.`}</small>` : "");
 }
 setInterval(() => { if (G.phase === "meet" && G.meet && G.meet.stage !== "result") renderMeet(); }, 500);
 
 function renderOver() {
   const O = G.over;
-  $("#otitle").textContent = O.win === "team" ? "🎉 Das Team gewinnt!" : "🕵️ Die Maulwürfe gewinnen!";
+  $("#otitle").textContent = O.win === "team" ? "🎉 Die Crew gewinnt!" : "🔪 Die Verräter gewinnen!";
   $("#otitle").className = O.win === "team" ? "blue" : "red";
   $("#owhy").textContent = O.why;
   const g = $("#ogrid"); g.innerHTML = "";
@@ -364,44 +365,28 @@ function renderOver() {
     const d = document.createElement("div"); d.className = "mp" + (p.role === "mole" ? " mole" : "");
     d.append(bustCanvas(p.av, 76, { dead: !p.alive, ring: p.role === "mole" ? "#ff4a3d" : "#5aa0ff" }));
     const n = document.createElement("div"); n.className = "n"; n.textContent = p.name; d.append(n);
-    const r = document.createElement("div"); r.className = "r"; r.textContent = p.role === "mole" ? "Maulwurf" : `Team · ${p.done.size}/${p.tasks.length} Aufgaben`; d.append(r);
+    const r = document.createElement("div"); r.className = "r"; r.textContent = p.role === "mole" ? "Verräter" : `Crew · ${p.done.size}/${p.tasks.length} Aufgaben`; d.append(r);
     g.append(d);
   }
 }
 
-// ---------------- Fernseher: Karte waehrend der Runde (ohne Spieler – sonst waere es zu leicht)
+// ---------------- Fernseher waehrend der Runde: so wenig wie moeglich (alles Wichtige steht auf den Handys)
 const cv = $("#tv"), g = cv.getContext("2d");
 function resize() { cv.width = innerWidth * Math.min(2, devicePixelRatio || 1); cv.height = innerHeight * Math.min(2, devicePixelRatio || 1); }
 addEventListener("resize", resize); resize();
+const BG = new Image(); BG.src = "assets/bg/werwars_bg.jpg";
 function frame(t) {
   requestAnimationFrame(frame);
   if (!G.map || (G.phase !== "play" && G.phase !== "intro" && G.phase !== "meet")) return;
   const W = cv.width, H = cv.height, dpr = cv.width / innerWidth;
-  g.fillStyle = "#0d1220"; g.fillRect(0, 0, W, H);
-  const top = 70 * dpr, im = G.mapImg, sc = Math.min(W / im.width, (H - top - 20 * dpr) / im.height) * 0.98;
-  const ox = (W - im.width * sc) / 2, oy = top + (H - top - im.height * sc) / 2;
-  g.drawImage(im, ox, oy, im.width * sc, im.height * sc);
-  const S = im.width / G.map.W * sc;
-  // Raumnamen
-  g.font = `900 ${Math.max(12, S * 0.55)}px Nunito, Arial`; g.textAlign = "center"; g.textBaseline = "middle";
-  for (const l of roomLabels(G.map)) { g.lineWidth = 4 * dpr; g.strokeStyle = "rgba(0,0,0,.6)"; g.strokeText(l.n, ox + l.x * S, oy + l.y * S); g.fillStyle = "rgba(255,255,255,.85)"; g.fillText(l.n, ox + l.x * S, oy + l.y * S); }
-  // Glocke
-  const bell = G.map.def.bell; g.font = `${S * 1.1}px "Segoe UI Emoji","Apple Color Emoji",sans-serif`; g.fillText("🔔", ox + bell.x * S, oy + bell.y * S);
-  // Sabotage
-  if (G.sab?.k === "lights") { g.fillStyle = "rgba(0,0,20,.72)"; g.fillRect(ox, oy, im.width * sc, im.height * sc); bigText("💡 Stromausfall! Sicherungskasten reparieren", W / 2, top + 50 * dpr, "#ffd23a", dpr); }
-  if (G.sab?.k === "crit") {
-    const pulse = 0.25 + 0.2 * Math.sin(t / 160); g.fillStyle = `rgba(255,30,20,${pulse})`; g.fillRect(0, 0, W, H);
-    bigText(`🔥 ${G.map.def.crit.n} Noch ${Math.ceil(G.sab.t)} s – zwei Leute an den ${G.map.def.crit.fixN}!`, W / 2, top + 50 * dpr, "#fff", dpr);
-    for (const s of ["a", "b"]) { const sp = G.map.def.crit[s]; g.fillStyle = G.sab[s].size ? "#6aff7a" : "#ff4a3d"; g.beginPath(); g.arc(ox + sp.x * S, oy + sp.y * S, S * (0.6 + 0.15 * Math.sin(t / 120)), 0, 7); g.fill(); }
-  }
-  // Aufgabenbalken
-  const ps = players(), tt = ps.filter(p => p.role === "team").reduce((s, p) => s + p.tasks.length, 0) || 1, td = ps.filter(p => p.role === "team").reduce((s, p) => s + p.done.size, 0);
-  const bw = Math.min(W * 0.6, 900 * dpr), bx = (W - bw) / 2, by = 18 * dpr, bh = 30 * dpr;
-  g.fillStyle = "rgba(255,255,255,.12)"; g.fillRect(bx, by, bw, bh); g.fillStyle = "#3fd66a"; g.fillRect(bx, by, bw * td / tt, bh);
-  g.strokeStyle = "rgba(255,255,255,.5)"; g.lineWidth = 2 * dpr; g.strokeRect(bx, by, bw, bh);
-  g.font = `900 ${18 * dpr}px Nunito, Arial`; g.fillStyle = "#fff"; g.textAlign = "center"; g.fillText(`Aufgaben des Teams · ${Math.round(td / tt * 100)} %`, W / 2, by + bh / 2 + 1);
-  g.textAlign = "left"; g.font = `900 ${22 * dpr}px "Lilita One", Nunito, sans-serif`; g.fillStyle = "#ffcf3a"; g.fillText("Wer war's? · " + G.map.def.name, 20 * dpr, by + bh / 2);
-  if (G.phase === "intro") { g.fillStyle = "rgba(0,0,0,.55)"; g.fillRect(0, 0, W, H); bigText("Schaut auf eure Handys – wer ist der Maulwurf? 🤫", W / 2, H / 2, "#ffcf3a", dpr, 1.6); }
+  g.fillStyle = "#06080f"; g.fillRect(0, 0, W, H);
+  if (BG.complete && BG.naturalWidth) { const k = Math.max(W / BG.width, H / BG.height); g.globalAlpha = 0.22; g.drawImage(BG, (W - BG.width * k) / 2, (H - BG.height * k) / 2, BG.width * k, BG.height * k); g.globalAlpha = 1; }
+  if (G.phase === "meet") return;
+  g.textAlign = "center"; g.textBaseline = "middle";
+  g.font = `${64 * dpr}px "Lilita One", Nunito, sans-serif`; g.fillStyle = "rgba(255,207,58,.85)"; g.fillText("Wer war's?", W / 2, H / 2 - 40 * dpr);
+  const dots = ".".repeat(1 + Math.floor(t / 600) % 3);
+  bigText(G.phase === "intro" ? "Schaut auf eure Handys – wer ist der Verräter? 🤫" : "Runde läuft – Augen aufs Handy" + dots, W / 2, H / 2 + 30 * dpr, "rgba(238,242,248,.8)", dpr, 0.9);
+  g.font = `800 ${16 * dpr}px Nunito, Arial`; g.fillStyle = "rgba(160,175,200,.6)"; g.fillText(G.map.def.name, W / 2, H - 40 * dpr);
 }
 function bigText(s, x, y, col, dpr, k = 1) { g.font = `900 ${28 * dpr * k}px Nunito, Arial`; const w = g.measureText(s).width; if (w > cv.width * 0.94) { k *= cv.width * 0.94 / w; g.font = `900 ${28 * dpr * k}px Nunito, Arial`; } g.textAlign = "center"; g.textBaseline = "middle"; g.lineWidth = 7 * dpr; g.strokeStyle = "rgba(0,0,0,.8)"; g.lineJoin = "round"; g.strokeText(s, x, y); g.fillStyle = col; g.fillText(s, x, y); }
 requestAnimationFrame(frame);
@@ -431,7 +416,7 @@ function sfx(k) {
   }
 }
 // Alarm laeuft, solange die kritische Sabotage aktiv ist
-setInterval(() => { if (G.phase === "play" && G.sab?.k === "crit") { tone(880, 0.18, 0, "square", 0.05); tone(660, 0.18, 0.22, "square", 0.05); } }, 900);
+
 
 // ---------------- Start
 loadAvatars("sprites/").then(() => renderLobby());
